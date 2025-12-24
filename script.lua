@@ -852,6 +852,119 @@ DungeonTab:AddButton({Name = "Count Enemies", Callback = function() local enemie
 -- ═══════════════════════════════════════════════════════════════════════
 -- ═══════════════════════════════════════════════════════════════════════
 -- PART 3B of 4 - Quest, Player, Settings & Main Loop
+-- WITH AUTO COLLECT ALL DEAD + AUTO STATS (FIXED)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO COLLECT ALL DEAD ENEMIES FUNCTION (FIXED - Only with buttons)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local AutoCollectAllDead = false
+local TotalCollected = 0
+
+local function GetAllDeadEnemies()
+    local deadEnemies = {}
+    local playerName = Player.Name
+    
+    local folders = {
+        Workspace:FindFirstChild("EntityFolder"),
+        Workspace:FindFirstChild("EntityFolder_Hitted1"),
+        Workspace:FindFirstChild("EntityFolder_Hitted2")
+    }
+    
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if child:IsA("Model") then
+                    local name = child.Name
+                    if IsPlayer(name) or name == playerName then continue end
+                    
+                    local hum = child:FindFirstChild("Humanoid")
+                    if hum and hum.Health <= 0 then
+                        local root = child:FindFirstChild("HumanoidRootPart") 
+                            or child:FindFirstChild("Torso") 
+                            or child:FindFirstChild("Head")
+                        if root then
+                            table.insert(deadEnemies, {
+                                Model = child,
+                                Root = root,
+                                Humanoid = hum,
+                                Name = name
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return deadEnemies
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO STATS FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════════════
+
+local AutoStatsEnabled = false
+local StatPriority = "DMG"
+
+local function FindStatAddButton(statName)
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == statName then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("ImageButton") or child:IsA("TextButton") then
+                    if child.Name == "Add" or (child.Parent and child.Parent.Name == "Add") then
+                        return child
+                    end
+                end
+            end
+        end
+    end
+    
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Stats" and gui.Visible then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("Frame") and child.Name == statName then
+                    for _, btn in pairs(child:GetDescendants()) do
+                        if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and 
+                           (btn.Name == "Add" or (btn.Parent and btn.Parent.Name == "Add")) then
+                            return btn
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function GetAvailableStatPoints()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("TextLabel") then
+            local text = gui.Text
+            if text:find("Points") or text:find("POINTS") then
+                local points = text:match("%d+")
+                if points then
+                    return tonumber(points)
+                end
+            end
+        end
+    end
+    return 0
+end
+
+local function AddStatPoint(statName)
+    local btn = FindStatAddButton(statName)
+    if btn then
+        ClickButton(btn)
+        return true
+    end
+    return false
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- QUEST TAB
 -- ═══════════════════════════════════════════════════════════════════════
 
 local QuestTab = Window:MakeTab({Name = "Quest", Icon = "rbxassetid://4483345998", PremiumOnly = false})
@@ -867,6 +980,247 @@ local NPCLabel = QuestTab:AddLabel("NPCs: 0")
 local QuestPointLabel = QuestTab:AddLabel("Quest: ❌")
 local StatusLabel = QuestTab:AddLabel("Status: Idle")
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- COLLECT TAB (FIXED - Only TP to enemies with Arise/Collect button)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local CollectTab = Window:MakeTab({Name = "Collect", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+CollectTab:AddSection({Name = "💀 Auto Collect All Dead"})
+
+local DeadCountLabel = CollectTab:AddLabel("Dead Enemies: 0")
+local CollectedLabel = CollectTab:AddLabel("Collected: 0")
+
+CollectTab:AddToggle({
+    Name = "Auto Collect All Dead", 
+    Default = false, 
+    Callback = function(Value) 
+        AutoCollectAllDead = Value 
+        
+        if Value then 
+            spawn(function() 
+                while AutoCollectAllDead do 
+                    if IsAlive() then 
+                        local deadList = GetAllDeadEnemies()
+                        
+                        for _, dead in pairs(deadList) do
+                            if not AutoCollectAllDead then break end
+                            if not IsAlive() then break end
+                            
+                            if dead.Root then
+                                -- Teleport to dead enemy
+                                TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3))
+                                task.wait(0.3)
+                                
+                                -- Check if Arise/Collect button appears
+                                local hasButton = false
+                                for i = 1, 5 do
+                                    if HasAriseOrCollect() then
+                                        hasButton = true
+                                        break
+                                    end
+                                    task.wait(0.15)
+                                end
+                                
+                                -- Only collect if button exists
+                                if hasButton then
+                                    while HasAriseOrCollect() do
+                                        ClickAllAriseCollect()
+                                        TotalCollected = TotalCollected + 1
+                                        task.wait(0.2)
+                                    end
+                                    task.wait(0.2)
+                                end
+                                -- If no button, skip to next dead enemy
+                            end
+                        end
+                    end 
+                    task.wait(0.5) 
+                end 
+            end) 
+        end 
+    end
+})
+
+CollectTab:AddSection({Name = "🔧 Manual Collect"})
+
+CollectTab:AddButton({
+    Name = "Collect All Dead Now", 
+    Callback = function() 
+        local deadList = GetAllDeadEnemies()
+        local collected = 0
+        
+        OrionLib:MakeNotification({Name = "Collecting", Content = "Found " .. #deadList .. " dead enemies!", Time = 2})
+        
+        for _, dead in pairs(deadList) do
+            if not IsAlive() then break end
+            
+            if dead.Root then
+                TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3))
+                task.wait(0.3)
+                
+                -- Check for button
+                local hasButton = false
+                for i = 1, 5 do
+                    if HasAriseOrCollect() then
+                        hasButton = true
+                        break
+                    end
+                    task.wait(0.15)
+                end
+                
+                -- Only collect if button exists
+                if hasButton then
+                    while HasAriseOrCollect() do
+                        ClickAllAriseCollect()
+                        collected = collected + 1
+                        TotalCollected = TotalCollected + 1
+                        task.wait(0.2)
+                    end
+                end
+                
+                task.wait(0.1)
+            end
+        end
+        
+        OrionLib:MakeNotification({Name = "Done", Content = "Collected " .. collected .. " enemies!", Time = 2})
+    end
+})
+
+CollectTab:AddButton({
+    Name = "TP to Nearest Dead", 
+    Callback = function() 
+        local dead = GetClosestDeadEnemy()
+        if dead and dead.Root then
+            TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3))
+            OrionLib:MakeNotification({Name = "TP", Content = "Teleported to dead enemy!", Time = 2})
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "No dead enemy found!", Time = 2})
+        end
+    end
+})
+
+CollectTab:AddButton({
+    Name = "Count Dead Enemies", 
+    Callback = function() 
+        local deadList = GetAllDeadEnemies()
+        OrionLib:MakeNotification({Name = "Dead Count", Content = "Found " .. #deadList .. " dead enemies!", Time = 3})
+    end
+})
+
+CollectTab:AddButton({
+    Name = "Reset Counter", 
+    Callback = function() 
+        TotalCollected = 0
+        OrionLib:MakeNotification({Name = "Reset", Content = "Counter reset!", Time = 2})
+    end
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- STATS TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
+local StatsTab = Window:MakeTab({Name = "Stats", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+StatsTab:AddSection({Name = "📊 Auto Stats"})
+
+local StatPointsLabel = StatsTab:AddLabel("Stat Points: 0")
+
+StatsTab:AddDropdown({
+    Name = "Stat Priority", 
+    Default = "DMG", 
+    Options = {"DMG", "VIT", "AGI", "MNA"}, 
+    Callback = function(Value) 
+        StatPriority = Value 
+    end
+})
+
+StatsTab:AddToggle({
+    Name = "Auto Assign Stats", 
+    Default = false, 
+    Callback = function(Value) 
+        AutoStatsEnabled = Value 
+        
+        if Value then 
+            spawn(function() 
+                while AutoStatsEnabled do 
+                    if IsAlive() then 
+                        local points = GetAvailableStatPoints()
+                        if points > 0 then
+                            AddStatPoint(StatPriority)
+                        end
+                    end 
+                    task.wait(1) 
+                end 
+            end) 
+        end 
+    end
+})
+
+StatsTab:AddSection({Name = "🔧 Manual Stats"})
+
+StatsTab:AddButton({
+    Name = "Add DMG Point", 
+    Callback = function() 
+        if AddStatPoint("DMG") then
+            OrionLib:MakeNotification({Name = "Stats", Content = "+1 DMG!", Time = 2})
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "Cannot add point!", Time = 2})
+        end
+    end
+})
+
+StatsTab:AddButton({
+    Name = "Add VIT Point", 
+    Callback = function() 
+        if AddStatPoint("VIT") then
+            OrionLib:MakeNotification({Name = "Stats", Content = "+1 VIT!", Time = 2})
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "Cannot add point!", Time = 2})
+        end
+    end
+})
+
+StatsTab:AddButton({
+    Name = "Add AGI Point", 
+    Callback = function() 
+        if AddStatPoint("AGI") then
+            OrionLib:MakeNotification({Name = "Stats", Content = "+1 AGI!", Time = 2})
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "Cannot add point!", Time = 2})
+        end
+    end
+})
+
+StatsTab:AddButton({
+    Name = "Add MNA Point", 
+    Callback = function() 
+        if AddStatPoint("MNA") then
+            OrionLib:MakeNotification({Name = "Stats", Content = "+1 MNA!", Time = 2})
+        else
+            OrionLib:MakeNotification({Name = "Error", Content = "Cannot add point!", Time = 2})
+        end
+    end
+})
+
+StatsTab:AddButton({
+    Name = "Add All Points", 
+    Callback = function() 
+        local added = 0
+        for i = 1, 100 do
+            if AddStatPoint(StatPriority) then
+                added = added + 1
+                task.wait(0.1)
+            else
+                break
+            end
+        end
+        OrionLib:MakeNotification({Name = "Stats", Content = "Added " .. added .. " points to " .. StatPriority .. "!", Time = 3})
+    end
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- PLAYER TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
 local PlayerTab = Window:MakeTab({Name = "Player", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 PlayerTab:AddSlider({Name = "Walk Speed", Min = 16, Max = 300, Default = Config.WalkSpeed, Increment = 5, Callback = function(v) local c = GetCharacter() if c and c:FindFirstChild("Humanoid") then c.Humanoid.WalkSpeed = v end Config.WalkSpeed = v end})
 PlayerTab:AddSlider({Name = "Jump Power", Min = 50, Max = 300, Default = Config.JumpPower, Increment = 5, Callback = function(v) local c = GetCharacter() if c and c:FindFirstChild("Humanoid") then c.Humanoid.JumpPower = v end Config.JumpPower = v end})
@@ -877,6 +1231,10 @@ local Noclip = Config.Noclip
 PlayerTab:AddToggle({Name = "Noclip", Default = Config.Noclip, Callback = function(v) Noclip = v Config.Noclip = v end})
 RunService.Stepped:Connect(function() if Noclip then local c = GetCharacter() if c then for _, p in pairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end end)
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- SETTINGS TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
 local SettingsTab = Window:MakeTab({Name = "Settings", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 SettingsTab:AddSection({Name = "💾 Config"})
 SettingsTab:AddButton({Name = "💾 Save Config", Callback = function() SaveConfig() end})
@@ -884,7 +1242,11 @@ SettingsTab:AddButton({Name = "📂 Load Config", Callback = function() LoadConf
 SettingsTab:AddButton({Name = "🗑️ Delete Config", Callback = function() DeleteConfig() end})
 SettingsTab:AddSection({Name = "⚙️ Settings"})
 SettingsTab:AddButton({Name = "Hide/Show", Callback = function() OrionLib:ToggleUI() end})
-SettingsTab:AddButton({Name = "Destroy", Callback = function() AutoKillEnabled = false AutoQuestEnabled = false AutoDungeonEnabled = false AutoDungeonKill = false AutoJoinPortal = false AutoFullDungeon = false OrionLib:Destroy() end})
+SettingsTab:AddButton({Name = "Destroy", Callback = function() AutoKillEnabled = false AutoQuestEnabled = false AutoDungeonEnabled = false AutoDungeonKill = false AutoJoinPortal = false AutoFullDungeon = false AutoCollectAllDead = false AutoStatsEnabled = false OrionLib:Destroy() end})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO RESPAWN & UPDATE LOOP
+-- ═══════════════════════════════════════════════════════════════════════
 
 Player.CharacterAdded:Connect(function(char) if AutoRespawnEnabled and LastQuestPointPosition then task.wait(1.5) local root = char:WaitForChild("HumanoidRootPart", 5) if root then root.CFrame = CFrame.new(LastQuestPointPosition) * CFrame.new(0, 5, 0) end end end)
 
@@ -905,8 +1267,8 @@ spawn(function()
         ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) 
         InDungeonLabel:Set(IsInDungeon() and "In Dungeon: ✅" or "In Dungeon: ❌") 
         DungeonEnemyLabel:Set("Dungeon Enemies: " .. #GetDungeonEnemies())
-        local portal = GetPortalPart()
-        PortalLabel:Set(portal and "Portal: ✅" or "Portal: ❌")
+ CollectedLabel:Set("Collected: " .. TotalCollected)
+        StatPointsLabel:Set("Stat Points: " .. GetAvailableStatPoints())
         if AutoQuestEnabled then 
             if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") 
             elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") 
@@ -920,16 +1282,18 @@ spawn(function()
     end 
 end)
 
-spawn(function() while task.wait(0.15) do if not AutoQuestEnabled and IsAlive() and HasAriseOrCollect() then if AutoTPDeadEnabled then local d = GetClosestDeadEnemy() if d and d.Root then TeleportTo(d.Root.CFrame * CFrame.new(0, 0, 3)) end end if AutoAriseEnabled or AutoCollectEnabled then ClickAllAriseCollect() end end end end)
+spawn(function() while task.wait(0.15) do if not AutoQuestEnabled and IsAlive() and 
+HasAriseOrCollect() then if AutoAriseEnabled or AutoCollectEnabled then ClickAllAriseCollect() end end end end)
 
 OrionLib:Init()
 
 print([[
 ╔═══════════════════════════════════════════════════════════════════════╗
-║   SOLO LEVELING - ARISE RAGNAROK (IMPROVED)                          ║
-║   ✅ Dungeon Kill Fixed for EntityFolder                             ║
-║   ✅ Auto Join Portal Added                                          ║
-║   ✅ Auto Full Dungeon (Join + Kill)                                 ║
+║   SOLO LEVELING - ARISE RAGNAROK (FULL VERSION)                      ║
+║   ✅ Auto Collect All Dead (Only with Arise/Collect button)          ║
+║   ✅ Auto Stats Assignment                                           ║
+║   ✅ Auto Join Portal Fixed                                          ║
+║   ✅ Dungeon Kill Fixed                                              ║
 ╚═══════════════════════════════════════════════════════════════════════╝
 ]])
 -- ═══════════════════════════════════════════════════════════════════════
