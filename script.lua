@@ -1,4 +1,4 @@
--- Solo Leveling FULL AUTO (No Key)
+-- Solo Leveling FULL AUTO + DUNGEON
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
 
 local Players = game:GetService("Players")
@@ -17,9 +17,12 @@ local AutoAriseEnabled = false
 local AutoCollectEnabled = false
 local AutoTPDeadEnabled = false
 local AutoRespawnEnabled = false
+local AutoDungeonEnabled = false
+local DungeonDifficulty = "Easy"
 local ArisePriority = true
 local AttackSpeed = 10
 local QuestState = "IDLE"
+local DungeonState = "IDLE"
 local LastQuestPointPosition = nil
 local AriseCount = 0
 local CollectCount = 0
@@ -53,6 +56,39 @@ local function GetQuestPoint()
     return nil
 end
 
+local function GetDungeonPortal()
+    local instanced = Workspace:FindFirstChild("Instanced")
+    if instanced then
+        local portal = instanced:FindFirstChild("Portal")
+        if portal then
+            for _, child in pairs(portal:GetDescendants()) do
+                if child:IsA("BasePart") then
+                    return child
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function GetDungeonSpot()
+    local map = Workspace:FindFirstChild("Map")
+    if map then
+        local city = map:FindFirstChild("City 1")
+        if city then
+            local spot = city:FindFirstChild("Dungeon Spot")
+            if spot then
+                for _, child in pairs(spot:GetDescendants()) do
+                    if child:IsA("BasePart") then
+                        return child
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function GetQuestEnemies()
     local enemies = {}
     local searchPosition = nil
@@ -74,6 +110,29 @@ local function GetQuestEnemies()
                             if root and (root.Position - searchPosition).Magnitude < 150 then
                                 table.insert(enemies, {Model = child, Root = root, Humanoid = hum, Name = name})
                             end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return enemies
+end
+
+local function GetDungeonEnemies()
+    local enemies = {}
+    local folders = {Workspace:FindFirstChild("EntityFolder"), Workspace:FindFirstChild("EntityFolder_Hitted1"), Workspace:FindFirstChild("EntityFolder_Hitted2")}
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if child:IsA("Model") then
+                    local name = child.Name
+                    if IsPlayer(name) then continue end
+                    local hum = child:FindFirstChild("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local root = child:FindFirstChild("HumanoidRootPart") or child:FindFirstChild("Torso")
+                        if root then
+                            table.insert(enemies, {Model = child, Root = root, Humanoid = hum, Name = name})
                         end
                     end
                 end
@@ -130,6 +189,18 @@ local function GetClosestQuestEnemy()
     local root = GetRootPart() if not root then return nil end
     local closest, closestDist = nil, 9999
     for _, enemy in pairs(GetQuestEnemies()) do
+        if enemy.Root then
+            local dist = (root.Position - enemy.Root.Position).Magnitude
+            if dist < closestDist then closest = enemy closestDist = dist end
+        end
+    end
+    return closest
+end
+
+local function GetClosestDungeonEnemy()
+    local root = GetRootPart() if not root then return nil end
+    local closest, closestDist = nil, 9999
+    for _, enemy in pairs(GetDungeonEnemies()) do
         if enemy.Root then
             local dist = (root.Position - enemy.Root.Position).Magnitude
             if dist < closestDist then closest = enemy closestDist = dist end
@@ -200,6 +271,33 @@ local function FindCollectButton()
     return nil
 end
 
+local function FindButtonByName(buttonName)
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and gui.Visible then
+            if gui.Name == buttonName or (gui.Parent and gui.Parent.Name == buttonName) then
+                return gui
+            end
+            if gui:IsA("TextButton") and gui.Text == buttonName then
+                return gui
+            end
+        end
+    end
+    return nil
+end
+
+local function FindDungeonButton(name)
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == name and gui.Visible then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                    return child
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function ClickButton(btn)
     if not btn then return false end
     pcall(function() firesignal(btn.MouseButton1Click) end)
@@ -232,13 +330,31 @@ end
 
 local function FastAttack() if not IsAlive() then return end for i = 1, AttackSpeed do pcall(function() AttackEvent:FireServer() end) end end
 local function ClearSkippedEnemies() SkippedEnemies = {} end
+
+local function IsInDungeon()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Boss Health" and gui.Visible then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsDungeonFinished()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Dungeon Finish" and gui.Visible then
+            return true
+        end
+    end
+    return false
+end
 local KillTab = Window:MakeTab({Name = "Auto Kill", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 KillTab:AddSection({Name = "⚔️ Auto Kill"})
 KillTab:AddToggle({Name = "Auto Kill", Default = false, Callback = function(Value) AutoKillEnabled = Value if Value then spawn(function() while AutoKillEnabled do if IsAlive() then local enemy = GetClosestQuestEnemy() if enemy and enemy.Root then TeleportTo(enemy.Root.CFrame * CFrame.new(0, 0, 3)) end end task.wait(0.1) end end) end end})
 KillTab:AddToggle({Name = "Kill Aura", Default = false, Callback = function(Value) KillAuraEnabled = Value end})
 RunService.Heartbeat:Connect(function() if KillAuraEnabled and IsAlive() then local root = GetRootPart() if root then for _, enemy in pairs(GetQuestEnemies()) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end end)
 KillTab:AddSection({Name = "⚡ Auto Attack"})
-KillTab:AddToggle({Name = "Auto Attack", Default = false, Callback = function(Value) AutoAttackEnabled = Value if Value then spawn(function() while AutoAttackEnabled do if IsAlive() and #GetQuestEnemies() > 0 then FastAttack() end task.wait(0.05) end end) end end})
+KillTab:AddToggle({Name = "Auto Attack", Default = false, Callback = function(Value) AutoAttackEnabled = Value if Value then spawn(function() while AutoAttackEnabled do if IsAlive() and (#GetQuestEnemies() > 0 or #GetDungeonEnemies() > 0) then FastAttack() end task.wait(0.05) end end) end end})
 KillTab:AddSlider({Name = "Attack Speed", Min = 1, Max = 50, Default = 10, Increment = 1, Callback = function(Value) AttackSpeed = Value end})
 local EnemyLabel = KillTab:AddLabel("Enemies: 0")
 local DeadEnemyLabel = KillTab:AddLabel("Dead: 0")
@@ -258,7 +374,138 @@ AriseTab:AddToggle({Name = "Auto TP to Dead", Default = false, Callback = functi
 AriseTab:AddSection({Name = "🔧 Manual"})
 AriseTab:AddButton({Name = "Click Arise", Callback = function() ClickButton(FindAriseButton()) end})
 AriseTab:AddButton({Name = "Click Collect", Callback = function() ClickButton(FindCollectButton()) end})
-AriseTab:AddButton({Name = "Clear Skipped", Callback = function() ClearSkippedEnemies() end})
+local DungeonTab = Window:MakeTab({Name = "Dungeon", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+DungeonTab:AddSection({Name = "🏰 Auto Dungeon"})
+
+local DungeonStatusLabel = DungeonTab:AddLabel("Status: Idle")
+local InDungeonLabel = DungeonTab:AddLabel("In Dungeon: ❌")
+local DungeonEnemyLabel = DungeonTab:AddLabel("Dungeon Enemies: 0")
+
+DungeonTab:AddDropdown({Name = "Difficulty", Default = "Easy", Options = {"Easy", "Normal", "Hard"}, Callback = function(Value) DungeonDifficulty = Value end})
+
+DungeonTab:AddToggle({Name = "Auto Dungeon", Default = false, Callback = function(Value)
+    AutoDungeonEnabled = Value
+    DungeonState = "IDLE"
+    if Value then
+        OrionLib:MakeNotification({Name = "Dungeon", Content = "Auto Dungeon Started!", Time = 2})
+        spawn(function()
+            while AutoDungeonEnabled do
+                if not IsAlive() then task.wait(1) continue end
+                
+                if DungeonState == "IDLE" then
+                    if IsInDungeon() then
+                        DungeonState = "KILLING"
+                    else
+                        DungeonState = "GO_TO_PORTAL"
+                    end
+                    
+                elseif DungeonState == "GO_TO_PORTAL" then
+                    DungeonStatusLabel:Set("Status: Going to Portal 🚶")
+                    local portal = GetDungeonPortal()
+                    if portal then
+                        TeleportTo(portal.CFrame * CFrame.new(0, 5, 0))
+                        task.wait(1)
+                        DungeonState = "SELECT_DIFFICULTY"
+                    else
+                        local spot = GetDungeonSpot()
+                        if spot then
+                            TeleportTo(spot.CFrame * CFrame.new(0, 5, 0))
+                            task.wait(1)
+                        end
+                    end
+                    
+                elseif DungeonState == "SELECT_DIFFICULTY" then
+                    DungeonStatusLabel:Set("Status: Selecting " .. DungeonDifficulty .. " 📋")
+                    task.wait(0.5)
+                    local diffBtn = FindButtonByName(DungeonDifficulty)
+                    if diffBtn then
+                        ClickButton(diffBtn)
+                        task.wait(0.5)
+                    end
+                    local soloBtn = FindButtonByName("Solo")
+                    if soloBtn then
+                        ClickButton(soloBtn)
+                        task.wait(0.5)
+                    end
+                    DungeonState = "CREATE_DUNGEON"
+                    
+                elseif DungeonState == "CREATE_DUNGEON" then
+                    DungeonStatusLabel:Set("Status: Creating Dungeon 🔨")
+                    local createBtn = FindButtonByName("Create")
+                    if createBtn then
+                        ClickButton(createBtn)
+                        task.wait(1)
+                    end
+                    local startBtn = FindButtonByName("Start")
+                    if startBtn then
+                        ClickButton(startBtn)
+                        task.wait(1)
+                    end
+                    DungeonState = "WAIT_ENTER"
+                    
+                elseif DungeonState == "WAIT_ENTER" then
+                    DungeonStatusLabel:Set("Status: Waiting to Enter ⏳")
+                    for i = 1, 20 do
+                        if IsInDungeon() then
+                            DungeonState = "KILLING"
+                            break
+                        end
+                        local startBtn = FindButtonByName("Start")
+                        if startBtn then ClickButton(startBtn) end
+                        task.wait(0.5)
+                    end
+                    if DungeonState ~= "KILLING" then
+                        DungeonState = "IDLE"
+                    end
+                    
+                elseif DungeonState == "KILLING" then
+                    DungeonStatusLabel:Set("Status: Killing Enemies 🔥")
+                    local enemies = GetDungeonEnemies()
+                    if #enemies > 0 then
+                        local enemy = GetClosestDungeonEnemy()
+                        if enemy and enemy.Root then
+                            TeleportTo(enemy.Root.CFrame * CFrame.new(0, 0, 3))
+                        end
+                    else
+                        if IsDungeonFinished() then
+                            DungeonState = "FINISHED"
+                        end
+                    end
+                    
+                elseif DungeonState == "FINISHED" then
+                    DungeonStatusLabel:Set("Status: Dungeon Done! ✅")
+                    task.wait(3)
+                    if not IsInDungeon() then
+                        DungeonState = "IDLE"
+                    end
+                end
+                
+                task.wait(0.5)
+            end
+        end)
+    end
+end})
+
+DungeonTab:AddSection({Name = "🔧 Manual"})
+DungeonTab:AddButton({Name = "TP to Portal", Callback = function()
+    local portal = GetDungeonPortal()
+    if portal then
+        TeleportTo(portal.CFrame * CFrame.new(0, 5, 0))
+        OrionLib:MakeNotification({Name = "TP", Content = "Teleported to Portal!", Time = 2})
+    else
+        OrionLib:MakeNotification({Name = "Error", Content = "No Portal found!", Time = 2})
+    end
+end})
+
+DungeonTab:AddButton({Name = "TP to Dungeon Spot", Callback = function()
+    local spot = GetDungeonSpot()
+    if spot then
+        TeleportTo(spot.CFrame * CFrame.new(0, 5, 0))
+        OrionLib:MakeNotification({Name = "TP", Content = "Teleported!", Time = 2})
+    else
+        OrionLib:MakeNotification({Name = "Error", Content = "No Spot found!", Time = 2})
+    end
+end})
 local QuestTab = Window:MakeTab({Name = "Quest", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 QuestTab:AddSection({Name = "📜 Auto Quest"})
 QuestTab:AddToggle({Name = "Auto Respawn", Default = false, Callback = function(Value) AutoRespawnEnabled = Value end})
@@ -283,12 +530,13 @@ RunService.Stepped:Connect(function() if Noclip then local c = GetCharacter() if
 
 local SettingsTab = Window:MakeTab({Name = "Settings", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 SettingsTab:AddButton({Name = "Hide/Show", Callback = function() OrionLib:ToggleUI() end})
-SettingsTab:AddButton({Name = "Destroy", Callback = function() AutoKillEnabled = false AutoAttackEnabled = false AutoQuestEnabled = false OrionLib:Destroy() end})
+SettingsTab:AddButton({Name = "Destroy", Callback = function() AutoKillEnabled = false AutoAttackEnabled = false AutoQuestEnabled = false AutoDungeonEnabled = false OrionLib:Destroy() end})
 
 Player.CharacterAdded:Connect(function(char) if AutoRespawnEnabled and LastQuestPointPosition then task.wait(1.5) local root = char:WaitForChild("HumanoidRootPart", 5) if root then root.CFrame = CFrame.new(LastQuestPointPosition) * CFrame.new(0, 5, 0) end end end)
 
-spawn(function() while task.wait(0.5) do EnemyLabel:Set("Enemies: " .. #GetQuestEnemies()) DeadEnemyLabel:Set("Dead: " .. #GetDeadEnemies()) AliveLabel:Set(IsAlive() and "Player: ✅" or "Player: ☠️") local skip = 0 for _ in pairs(SkippedEnemies) do skip = skip + 1 end SkippedLabel:Set("Skipped: " .. skip) NPCLabel:Set("NPCs: " .. #GetQuestNPCs()) local qp = GetQuestPoint() QuestPointLabel:Set(qp and "Quest: ✅" or "Quest: ❌") AriseCountLabel:Set("Arise: " .. AriseCount) CollectCountLabel:Set("Collect: " .. CollectCount) local a, c = FindAriseButton(), FindCollectButton() ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) if AutoQuestEnabled then if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") elseif QuestState == "WAITING_SPAWN" then StatusLabel:Set("Waiting ⏳") elseif QuestState == "KILLING" then StatusLabel:Set("Killing 🔥") elseif QuestState == "ARISE_COLLECT" then StatusLabel:Set("Arise 👻") end else StatusLabel:Set("Idle 💤") end end end)
+spawn(function() while task.wait(0.5) do EnemyLabel:Set("Enemies: " .. #GetQuestEnemies()) DeadEnemyLabel:Set("Dead: " .. #GetDeadEnemies()) AliveLabel:Set(IsAlive() and "Player: ✅" or "Player: ☠️") local skip = 0 for _ in pairs(SkippedEnemies) do skip = skip + 1 end SkippedLabel:Set("Skipped: " .. skip) NPCLabel:Set("NPCs: " .. #GetQuestNPCs()) local qp = GetQuestPoint() QuestPointLabel:Set(qp and "Quest: ✅" or "Quest: ❌") AriseCountLabel:Set("Arise: " .. AriseCount) CollectCountLabel:Set("Collect: " .. CollectCount) local a, c = FindAriseButton(), FindCollectButton() ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) InDungeonLabel:Set(IsInDungeon() and "In Dungeon: ✅" or "In Dungeon: ❌") DungeonEnemyLabel:Set("Dungeon Enemies: " .. #GetDungeonEnemies()) if AutoQuestEnabled then if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") elseif QuestState == "WAITING_SPAWN" then StatusLabel:Set("Waiting ⏳") elseif QuestState == "KILLING" then StatusLabel:Set("Killing 🔥") elseif QuestState == "ARISE_COLLECT" then StatusLabel:Set("Arise 👻") end else StatusLabel:Set("Idle 💤") end end end)
 
 spawn(function() while task.wait(0.15) do if not AutoQuestEnabled and IsAlive() and HasAriseOrCollect() then if AutoTPDeadEnabled then local d = GetClosestDeadEnemy() if d and d.Root then TeleportTo(d.Root.CFrame * CFrame.new(0, 0, 3)) end end if AutoAriseEnabled or AutoCollectEnabled then ClickAllAriseCollect() end end end end)
 
 OrionLib:Init()
+AriseTab:AddButton({Name = "Clear Skipped", Callback = function() ClearSkippedEnemies() end})
