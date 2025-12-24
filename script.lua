@@ -188,22 +188,71 @@ end
 
 local function GetDungeonEnemies()
     local enemies = {}
-    local folders = {Workspace:FindFirstChild("EntityFolder"), Workspace:FindFirstChild("EntityFolder_Hitted1"), Workspace:FindFirstChild("EntityFolder_Hitted2")}
+    local playerName = Player.Name
+    
+    -- Search in all possible folders
+    local folders = {
+        Workspace:FindFirstChild("EntityFolder"),
+        Workspace:FindFirstChild("EntityFolder_Hitted1"),
+        Workspace:FindFirstChild("EntityFolder_Hitted2"),
+        Workspace:FindFirstChild("Enemies"),
+        Workspace:FindFirstChild("Mobs"),
+        Workspace:FindFirstChild("NPCs")
+    }
+    
+    -- Also search in Instanced folder
+    local instanced = Workspace:FindFirstChild("Instanced")
+    if instanced then
+        for _, child in pairs(instanced:GetChildren()) do
+            if child:IsA("Folder") then
+                table.insert(folders, child)
+            end
+        end
+    end
+    
     for _, folder in pairs(folders) do
         if folder then
-            for _, child in pairs(folder:GetChildren()) do
+            for _, child in pairs(folder:GetDescendants()) do
                 if child:IsA("Model") then
                     local name = child.Name
+                    -- Skip players
                     if IsPlayer(name) then continue end
+                    if name == playerName then continue end
+                    
                     local hum = child:FindFirstChild("Humanoid")
                     if hum and hum.Health > 0 then
-                        local root = child:FindFirstChild("HumanoidRootPart") or child:FindFirstChild("Torso")
-                        if root then table.insert(enemies, {Model = child, Root = root, Humanoid = hum, Name = name}) end
+                        local root = child:FindFirstChild("HumanoidRootPart") or child:FindFirstChild("Torso") or child:FindFirstChild("Head")
+                        if root then
+                            table.insert(enemies, {Model = child, Root = root, Humanoid = hum, Name = name})
+                        end
                     end
                 end
             end
         end
     end
+    
+    -- Also search entire workspace for enemies with Humanoid
+    if IsInDungeon and IsInDungeon() then
+        for _, child in pairs(Workspace:GetDescendants()) do
+            if child:IsA("Model") and child.Name ~= playerName and not IsPlayer(child.Name) then
+                local hum = child:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 and hum.Health < 999999 then
+                    local root = child:FindFirstChild("HumanoidRootPart") or child:FindFirstChild("Torso") or child:FindFirstChild("Head")
+                    if root then
+                        -- Check if not already in list
+                        local exists = false
+                        for _, e in pairs(enemies) do
+                            if e.Model == child then exists = true break end
+                        end
+                        if not exists then
+                            table.insert(enemies, {Model = child, Root = root, Humanoid = hum, Name = child.Name})
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
     return enemies
 end
 -- ========== END PART 2 ==========
@@ -318,6 +367,21 @@ local function AcceptQuest(npcName)
 end
 -- ========== END PART 3 ==========
 -- ========== PART 4 of 7 ==========
+local function IsInDungeon()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Boss Health" and gui.Visible then return true end
+        if gui:IsA("Frame") and gui.Name == "Dungeon Name" and gui.Visible then return true end
+    end
+    return false
+end
+
+local function IsDungeonFinished()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Dungeon Finish" and gui.Visible then return true end
+    end
+    return false
+end
+
 local function FindAriseButton()
     for _, gui in pairs(PlayerGui:GetDescendants()) do
         if gui:IsA("ImageButton") and gui.Name == "Content" then
@@ -393,20 +457,6 @@ end
 
 local function FastAttack() if not IsAlive() then return end for i = 1, AttackSpeed do pcall(function() AttackEvent:FireServer() end) end end
 local function ClearSkippedEnemies() SkippedEnemies = {} end
-
-local function IsInDungeon()
-    for _, gui in pairs(PlayerGui:GetDescendants()) do
-        if gui:IsA("Frame") and gui.Name == "Boss Health" and gui.Visible then return true end
-    end
-    return false
-end
-
-local function IsDungeonFinished()
-    for _, gui in pairs(PlayerGui:GetDescendants()) do
-        if gui:IsA("Frame") and gui.Name == "Dungeon Finish" and gui.Visible then return true end
-    end
-    return false
-end
 -- ========== END PART 4 ==========
 -- ========== PART 5 of 7 ==========
 local KillTab = Window:MakeTab({Name = "Auto Kill", Icon = "rbxassetid://4483345998", PremiumOnly = false})
@@ -452,34 +502,75 @@ local function TeleportToFar(targetCFrame)
     local distance = (root.Position - targetCFrame.Position).Magnitude
     if distance > 100 then
         TeleportTo(targetCFrame * CFrame.new(0, 150, 0))
-        task.wait(0.2)
+        task.wait(0.15)
         TeleportTo(targetCFrame * CFrame.new(0, 80, 0))
-        task.wait(0.2)
+        task.wait(0.15)
         TeleportTo(targetCFrame * CFrame.new(0, 30, 0))
-        task.wait(0.2)
+        task.wait(0.15)
         TeleportTo(targetCFrame * CFrame.new(0, 0, 3))
     elseif distance > 50 then
         TeleportTo(targetCFrame * CFrame.new(0, 50, 0))
-        task.wait(0.2)
+        task.wait(0.15)
         TeleportTo(targetCFrame * CFrame.new(0, 0, 3))
     else
         TeleportTo(targetCFrame * CFrame.new(0, 0, 3))
     end
 end
 
-DungeonTab:AddToggle({Name = "Auto Dungeon Kill", Default = Config.AutoDungeonKill, Callback = function(Value) AutoDungeonKill = Value Config.AutoDungeonKill = Value if Value then spawn(function() while AutoDungeonKill do if IsAlive() and IsInDungeon() then local enemy = GetClosestDungeonEnemy() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) end end task.wait(0.15) end end) end end})
+local function GetAllEnemiesInDungeon()
+    local enemies = {}
+    local playerName = Player.Name
+    
+    for _, child in pairs(Workspace:GetDescendants()) do
+        if child:IsA("Humanoid") and child.Health > 0 then
+            local model = child.Parent
+            if model and model:IsA("Model") then
+                local name = model.Name
+                if name ~= playerName and not IsPlayer(name) then
+                    local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("Head") or model:FindFirstChildWhichIsA("BasePart")
+                    if root then
+                        table.insert(enemies, {Model = model, Root = root, Humanoid = child, Name = name})
+                    end
+                end
+            end
+        end
+    end
+    
+    return enemies
+end
+
+local function GetClosestEnemyInDungeon()
+    local root = GetRootPart()
+    if not root then return nil end
+    local enemies = GetAllEnemiesInDungeon()
+    local closest, closestDist = nil, 9999
+    for _, enemy in pairs(enemies) do
+        if enemy.Root then
+            local dist = (root.Position - enemy.Root.Position).Magnitude
+            if dist < closestDist then
+                closest = enemy
+                closestDist = dist
+            end
+        end
+    end
+    return closest
+end
+
+DungeonTab:AddToggle({Name = "Auto Dungeon Kill", Default = Config.AutoDungeonKill, Callback = function(Value) AutoDungeonKill = Value Config.AutoDungeonKill = Value if Value then spawn(function() while AutoDungeonKill do if IsAlive() and IsInDungeon() then local enemy = GetClosestEnemyInDungeon() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) end end task.wait(0.1) end end) end end})
+
+DungeonTab:AddToggle({Name = "Dungeon Kill Aura", Default = false, Callback = function(Value) if Value then spawn(function() while Value and AutoDungeonKill do if IsAlive() and IsInDungeon() then local root = GetRootPart() if root then local enemies = GetAllEnemiesInDungeon() for _, enemy in pairs(enemies) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end task.wait(0.1) end end) end end})
 
 DungeonTab:AddToggle({Name = "Auto Start Dungeon", Default = Config.AutoDungeonStart, Callback = function(Value) AutoDungeonStart = Value Config.AutoDungeonStart = Value if Value then spawn(function() while AutoDungeonStart do if IsAlive() then local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) end local startDungeon = FindDungeonButton("Start Dungeon") if startDungeon then ClickButton(startDungeon) end end task.wait(1) end end) end end})
 
 DungeonTab:AddToggle({Name = "Auto Collect Items", Default = Config.AutoDungeonCollect, Callback = function(Value) AutoDungeonCollect = Value Config.AutoDungeonCollect = Value if Value then spawn(function() while AutoDungeonCollect do if IsAlive() then local instanced = Workspace:FindFirstChild("Instanced") if instanced then for _, item in pairs(instanced:GetDescendants()) do if item:IsA("BasePart") and (item.Name:lower():find("item") or item.Name:lower():find("drop") or item.Name:lower():find("loot") or item.Name:lower():find("chest")) then TeleportToFar(item.CFrame) task.wait(0.3) end end end end task.wait(0.5) end end) end end})
 
-DungeonTab:AddToggle({Name = "Auto Dungeon (Full)", Default = Config.AutoDungeon, Callback = function(Value) AutoDungeonEnabled = Value Config.AutoDungeon = Value DungeonState = "IDLE" if Value then spawn(function() while AutoDungeonEnabled do if not IsAlive() then task.wait(1) continue end if DungeonState == "IDLE" then if IsInDungeon() then DungeonState = "KILLING" else DungeonState = "GO_TO_PORTAL" end elseif DungeonState == "GO_TO_PORTAL" then DungeonStatusLabel:Set("Status: Going to Portal 🚶") local portal = GetDungeonPortal() if portal then TeleportToFar(portal.CFrame) task.wait(1) DungeonState = "SELECT_DIFFICULTY" else local spot = GetDungeonSpot() if spot then TeleportToFar(spot.CFrame) task.wait(1) end end elseif DungeonState == "SELECT_DIFFICULTY" then DungeonStatusLabel:Set("Status: Selecting " .. DungeonDifficulty) task.wait(0.5) local diffBtn = FindButtonByName(DungeonDifficulty) if diffBtn then ClickButton(diffBtn) task.wait(0.5) end local soloBtn = FindButtonByName("Solo") if soloBtn then ClickButton(soloBtn) task.wait(0.5) end DungeonState = "CREATE_DUNGEON" elseif DungeonState == "CREATE_DUNGEON" then DungeonStatusLabel:Set("Status: Creating 🔨") local createBtn = FindButtonByName("Create") if createBtn then ClickButton(createBtn) task.wait(1) end DungeonState = "START_DUNGEON" elseif DungeonState == "START_DUNGEON" then DungeonStatusLabel:Set("Status: Starting ▶️") local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) task.wait(1) end DungeonState = "WAIT_ENTER" elseif DungeonState == "WAIT_ENTER" then DungeonStatusLabel:Set("Status: Waiting ⏳") for i = 1, 20 do if IsInDungeon() then DungeonState = "KILLING" break end local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) end task.wait(0.5) end if DungeonState ~= "KILLING" then DungeonState = "IDLE" end elseif DungeonState == "KILLING" then DungeonStatusLabel:Set("Status: Killing 🔥") local enemies = GetDungeonEnemies() if #enemies > 0 then local enemy = GetClosestDungeonEnemy() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) end else DungeonState = "COLLECT" end elseif DungeonState == "COLLECT" then DungeonStatusLabel:Set("Status: Collecting 💎") local instanced = Workspace:FindFirstChild("Instanced") if instanced then for _, item in pairs(instanced:GetDescendants()) do if item:IsA("BasePart") and (item.Name:lower():find("item") or item.Name:lower():find("drop") or item.Name:lower():find("loot")) then TeleportToFar(item.CFrame) task.wait(0.3) end end end task.wait(1) if IsDungeonFinished() or not IsInDungeon() then DungeonState = "IDLE" elseif #GetDungeonEnemies() > 0 then DungeonState = "KILLING" end end task.wait(0.3) end end) end end})
+DungeonTab:AddToggle({Name = "Auto Dungeon (Full)", Default = Config.AutoDungeon, Callback = function(Value) AutoDungeonEnabled = Value Config.AutoDungeon = Value DungeonState = "IDLE" if Value then spawn(function() while AutoDungeonEnabled do if not IsAlive() then task.wait(1) continue end if DungeonState == "IDLE" then if IsInDungeon() then DungeonState = "KILLING" else DungeonState = "GO_TO_PORTAL" end elseif DungeonState == "GO_TO_PORTAL" then DungeonStatusLabel:Set("Status: Going to Portal 🚶") local portal = GetDungeonPortal() if portal then TeleportToFar(portal.CFrame) task.wait(1) DungeonState = "SELECT_DIFFICULTY" else local spot = GetDungeonSpot() if spot then TeleportToFar(spot.CFrame) task.wait(1) end end elseif DungeonState == "SELECT_DIFFICULTY" then DungeonStatusLabel:Set("Status: Selecting " .. DungeonDifficulty) task.wait(0.5) local diffBtn = FindButtonByName(DungeonDifficulty) if diffBtn then ClickButton(diffBtn) task.wait(0.5) end local soloBtn = FindButtonByName("Solo") if soloBtn then ClickButton(soloBtn) task.wait(0.5) end DungeonState = "CREATE_DUNGEON" elseif DungeonState == "CREATE_DUNGEON" then DungeonStatusLabel:Set("Status: Creating 🔨") local createBtn = FindButtonByName("Create") if createBtn then ClickButton(createBtn) task.wait(1) end DungeonState = "START_DUNGEON" elseif DungeonState == "START_DUNGEON" then DungeonStatusLabel:Set("Status: Starting ▶️") local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) task.wait(1) end DungeonState = "WAIT_ENTER" elseif DungeonState == "WAIT_ENTER" then DungeonStatusLabel:Set("Status: Waiting ⏳") for i = 1, 20 do if IsInDungeon() then DungeonState = "KILLING" break end local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) end task.wait(0.5) end if DungeonState ~= "KILLING" then DungeonState = "IDLE" end elseif DungeonState == "KILLING" then DungeonStatusLabel:Set("Status: Killing 🔥") local enemies = GetAllEnemiesInDungeon() if #enemies > 0 then local enemy = GetClosestEnemyInDungeon() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) end else DungeonState = "COLLECT" end elseif DungeonState == "COLLECT" then DungeonStatusLabel:Set("Status: Collecting 💎") local instanced = Workspace:FindFirstChild("Instanced") if instanced then for _, item in pairs(instanced:GetDescendants()) do if item:IsA("BasePart") and (item.Name:lower():find("item") or item.Name:lower():find("drop") or item.Name:lower():find("loot")) then TeleportToFar(item.CFrame) task.wait(0.3) end end end task.wait(1) if IsDungeonFinished() or not IsInDungeon() then DungeonState = "IDLE" elseif #GetAllEnemiesInDungeon() > 0 then DungeonState = "KILLING" end end task.wait(0.3) end end) end end})
 
 DungeonTab:AddSection({Name = "🔧 Manual"})
 DungeonTab:AddButton({Name = "TP to Portal", Callback = function() local portal = GetDungeonPortal() if portal then TeleportToFar(portal.CFrame) end end})
-DungeonTab:AddButton({Name = "TP to Closest Enemy", Callback = function() local enemy = GetClosestDungeonEnemy() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) OrionLib:MakeNotification({Name = "TP", Content = "Teleported to enemy!", Time = 2}) else OrionLib:MakeNotification({Name = "Error", Content = "No enemy found!", Time = 2}) end end})
+DungeonTab:AddButton({Name = "TP to Closest Enemy", Callback = function() local enemy = GetClosestEnemyInDungeon() if enemy and enemy.Root then TeleportToFar(enemy.Root.CFrame) OrionLib:MakeNotification({Name = "TP", Content = "Teleported to " .. enemy.Name, Time = 2}) else OrionLib:MakeNotification({Name = "Error", Content = "No enemy found!", Time = 2}) end end})
 DungeonTab:AddButton({Name = "Click Start", Callback = function() local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) end end})
-DungeonTab:AddButton({Name = "Collect Items Now", Callback = function() local instanced = Workspace:FindFirstChild("Instanced") if instanced then for _, item in pairs(instanced:GetDescendants()) do if item:IsA("BasePart") and (item.Name:lower():find("item") or item.Name:lower():find("drop") or item.Name:lower():find("loot")) then TeleportToFar(item.CFrame) task.wait(0.3) end end end end})
+DungeonTab:AddButton({Name = "Count All Enemies", Callback = function() local enemies = GetAllEnemiesInDungeon() OrionLib:MakeNotification({Name = "Enemies", Content = "Found " .. #enemies .. " enemies!", Time = 3}) end})
 -- ========== END PART 6 ==========
 -- ========== PART 7 of 7 ==========
 local QuestTab = Window:MakeTab({Name = "Quest", Icon = "rbxassetid://4483345998", PremiumOnly = false})
