@@ -552,7 +552,7 @@ end
 -- END PART 3 - Continue to PART 4
 -- ═══════════════════════════════════════════════════════════════════════
 -- ═══════════════════════════════════════════════════════════════════════
--- PART 4 of 5 - Stats Functions & All Tabs
+-- PART 4 of 5 - IMPROVED AUTO KILL + Stats Functions & Tabs
 -- ═══════════════════════════════════════════════════════════════════════
 
 local function FindStatAddButton(statName)
@@ -638,22 +638,308 @@ local function OpenStatsWindow()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
--- AUTO KILL TAB
+-- IMPROVED AUTO KILL VARIABLES
+-- ═══════════════════════════════════════════════════════════════════════
+
+local BringAllEnemies = false
+local AttackAllEnemies = false
+local TPBehindEnemy = false
+local TargetPriority = "Closest"
+local AttackRange = 150
+local KillCount = 0
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- IMPROVED AUTO KILL FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════════════
+
+local function GetAllEnemiesInRange()
+    local enemies = {}
+    local root = GetRootPart()
+    if not root then return enemies end
+    
+    local playerName = Player.Name
+    local folders = {
+        Workspace:FindFirstChild("EntityFolder"),
+        Workspace:FindFirstChild("EntityFolder_Hitted1"),
+        Workspace:FindFirstChild("EntityFolder_Hitted2")
+    }
+    
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if child:IsA("Model") then
+                    local name = child.Name
+                    if IsPlayer(name) or name == playerName then continue end
+                    
+                    local hum = child:FindFirstChild("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local enemyRoot = child:FindFirstChild("HumanoidRootPart") 
+                            or child:FindFirstChild("Torso") 
+                            or child:FindFirstChild("Head")
+                        if enemyRoot then
+                            local dist = (root.Position - enemyRoot.Position).Magnitude
+                            if dist <= AttackRange then
+                                table.insert(enemies, {
+                                    Model = child,
+                                    Root = enemyRoot,
+                                    Humanoid = hum,
+                                    Name = name,
+                                    Distance = dist,
+                                    Health = hum.Health
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Sort by priority
+    if TargetPriority == "Closest" then
+        table.sort(enemies, function(a, b) return a.Distance < b.Distance end)
+    elseif TargetPriority == "Lowest HP" then
+        table.sort(enemies, function(a, b) return a.Health < b.Health end)
+    elseif TargetPriority == "Highest HP" then
+        table.sort(enemies, function(a, b) return a.Health > b.Health end)
+    end
+    
+    return enemies
+end
+
+local function GetBestTarget()
+    local enemies = GetAllEnemiesInRange()
+    if #enemies > 0 then
+        return enemies[1]
+    end
+    return nil
+end
+
+local function BringEnemiesToPlayer()
+    local root = GetRootPart()
+    if not root then return end
+    
+    local enemies = GetAllEnemiesInRange()
+    for _, enemy in pairs(enemies) do
+        if enemy.Root then
+            enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3)
+        end
+    end
+end
+
+local function TeleportBehindEnemy(enemy)
+    if not enemy or not enemy.Root then return end
+    local root = GetRootPart()
+    if not root then return end
+    
+    -- Teleport behind the enemy
+    root.CFrame = enemy.Root.CFrame * CFrame.new(0, 0, -3)
+end
+
+local function TeleportToEnemy_Improved(enemy)
+    if not enemy or not enemy.Root then return end
+    
+    if TPBehindEnemy then
+        TeleportBehindEnemy(enemy)
+    else
+        TeleportTo(enemy.Root.CFrame * CFrame.new(0, 0, 3))
+    end
+end
+
+local function AttackAllAtOnce()
+    if not IsAlive() then return end
+    
+    for i = 1, AttackSpeed do
+        pcall(function()
+            AttackEvent:FireServer()
+        end)
+    end
+end
+
+local function TryInstantKill(enemy)
+    if not enemy or not enemy.Humanoid then return false end
+    
+    -- Try various methods to damage enemy
+    pcall(function()
+        enemy.Humanoid.Health = 0
+    end)
+    pcall(function()
+        enemy.Humanoid:TakeDamage(enemy.Humanoid.MaxHealth)
+    end)
+    
+    return enemy.Humanoid.Health <= 0
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO KILL TAB (IMPROVED)
 -- ═══════════════════════════════════════════════════════════════════════
 
 local KillTab = Window:MakeTab({Name = "Auto Kill", Icon = "rbxassetid://4483345998", PremiumOnly = false})
-KillTab:AddSection({Name = "⚔️ Auto Kill"})
-KillTab:AddToggle({Name = "Auto Kill", Default = Config.AutoKill, Callback = function(Value) AutoKillEnabled = Value Config.AutoKill = Value if Value then spawn(function() while AutoKillEnabled do if IsAlive() and not IsInDungeon() then local enemy = GetClosestQuestEnemy() if enemy and enemy.Root then TeleportTo(enemy.Root.CFrame * CFrame.new(0, 0, 3)) end end task.wait(0.1) end end) end end})
-KillTab:AddToggle({Name = "Kill Aura", Default = Config.KillAura, Callback = function(Value) KillAuraEnabled = Value Config.KillAura = Value end})
-RunService.Heartbeat:Connect(function() if KillAuraEnabled and IsAlive() and not IsInDungeon() then local root = GetRootPart() if root then for _, enemy in pairs(GetQuestEnemies()) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end end)
-KillTab:AddSection({Name = "⚡ Fast Attack"})
-KillTab:AddToggle({Name = "Auto Attack", Default = Config.AutoAttack, Callback = function(Value) AutoAttackEnabled = Value Config.AutoAttack = Value if Value then spawn(function() while AutoAttackEnabled do if IsAlive() and (#GetQuestEnemies() > 0 or #GetDungeonEnemies() > 0) then FastAttack() end task.wait(0.05) end end) end end})
-KillTab:AddSlider({Name = "Attack Speed", Min = 1, Max = 50, Default = Config.AttackSpeed, Increment = 1, Callback = function(Value) AttackSpeed = Value Config.AttackSpeed = Value end})
+
+KillTab:AddSection({Name = "⚔️ Auto Kill (Improved)"})
+
+KillTab:AddToggle({
+    Name = "Auto Kill", 
+    Default = Config.AutoKill, 
+    Callback = function(Value) 
+        AutoKillEnabled = Value 
+        Config.AutoKill = Value 
+        if Value then 
+            spawn(function() 
+                while AutoKillEnabled do 
+                    if IsAlive() and not IsInDungeon() then 
+                        local enemy = GetBestTarget()
+                        if enemy and enemy.Root then 
+                            TeleportToEnemy_Improved(enemy)
+                            KillCount = KillCount + 1
+                        end 
+                    end 
+                    task.wait(0.1) 
+                end 
+            end) 
+        end 
+    end
+})
+
+KillTab:AddToggle({
+    Name = "Kill Aura (Improved)", 
+    Default = Config.KillAura, 
+    Callback = function(Value) 
+        KillAuraEnabled = Value 
+        Config.KillAura = Value 
+    end
+})
+
+-- Improved Kill Aura with faster loop
+spawn(function()
+    while true do
+        if KillAuraEnabled and IsAlive() and not IsInDungeon() then
+            local root = GetRootPart()
+            if root then
+                local enemies = GetAllEnemiesInRange()
+                for _, enemy in pairs(enemies) do
+                    if enemy.Root then
+                        enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3)
+                    end
+                end
+            end
+        end
+        task.wait(0.05) -- Faster than before
+    end
+end)
+
+KillTab:AddToggle({
+    Name = "Bring All Enemies", 
+    Default = false, 
+    Callback = function(Value) 
+        BringAllEnemies = Value 
+        if Value then
+            spawn(function()
+                while BringAllEnemies do
+                    if IsAlive() and not IsInDungeon() then
+                        BringEnemiesToPlayer()
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+KillTab:AddToggle({
+    Name = "TP Behind Enemy", 
+    Default = false, 
+    Callback = function(Value) 
+        TPBehindEnemy = Value 
+    end
+})
+
+KillTab:AddSection({Name = "⚡ Attack Settings"})
+
+KillTab:AddToggle({
+    Name = "Auto Attack", 
+    Default = Config.AutoAttack, 
+    Callback = function(Value) 
+        AutoAttackEnabled = Value 
+        Config.AutoAttack = Value 
+        if Value then 
+            spawn(function() 
+                while AutoAttackEnabled do 
+                    if IsAlive() then
+                        local questEnemies = GetQuestEnemies()
+                        local dungeonEnemies = GetDungeonEnemies()
+                        if #questEnemies > 0 or #dungeonEnemies > 0 then 
+                            AttackAllAtOnce()
+                        end
+                    end 
+                    task.wait(0.03) -- Faster attack
+                end 
+            end) 
+        end 
+    end
+})
+
+KillTab:AddToggle({
+    Name = "Attack All Enemies", 
+    Default = false, 
+    Callback = function(Value) 
+        AttackAllEnemies = Value 
+        if Value then
+            spawn(function()
+                while AttackAllEnemies do
+                    if IsAlive() then
+                        -- Bring and attack all at once
+                        BringEnemiesToPlayer()
+                        AttackAllAtOnce()
+                    end
+                    task.wait(0.05)
+                end
+            end)
+        end
+    end
+})
+
+KillTab:AddSlider({
+    Name = "Attack Speed", 
+    Min = 1, 
+    Max = 100, 
+    Default = Config.AttackSpeed, 
+    Increment = 1, 
+    Callback = function(Value) 
+        AttackSpeed = Value 
+        Config.AttackSpeed = Value 
+    end
+})
+
+KillTab:AddSlider({
+    Name = "Attack Range", 
+    Min = 10, 
+    Max = 500, 
+    Default = 150, 
+    Increment = 10, 
+    Callback = function(Value) 
+        AttackRange = Value 
+    end
+})
+
+KillTab:AddSection({Name = "🎯 Target Settings"})
+
+KillTab:AddDropdown({
+    Name = "Target Priority", 
+    Default = "Closest", 
+    Options = {"Closest", "Lowest HP", "Highest HP"}, 
+    Callback = function(Value) 
+        TargetPriority = Value 
+    end
+})
+
 KillTab:AddSection({Name = "📊 Status"})
 local EnemyLabel = KillTab:AddLabel("Enemies: 0")
 local DeadEnemyLabel = KillTab:AddLabel("Dead: 0")
 local AliveLabel = KillTab:AddLabel("Player: ✅")
 local SkippedLabel = KillTab:AddLabel("Skipped: 0")
+local KillCountLabel = KillTab:AddLabel("Kills: 0")
+local RangeEnemiesLabel = KillTab:AddLabel("In Range: 0")
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- ARISE TAB
@@ -687,7 +973,10 @@ DungeonTab:AddToggle({Name = "Auto Full Dungeon (Join + Kill)", Default = false,
 
 DungeonTab:AddSection({Name = "⚔️ Dungeon Auto Kill"})
 DungeonTab:AddToggle({Name = "Auto Dungeon Kill", Default = Config.AutoDungeonKill, Callback = function(Value) AutoDungeonKill = Value Config.AutoDungeonKill = Value if Value then spawn(function() while AutoDungeonKill do if IsAlive() and IsInDungeon() then local enemy = GetClosestDungeonEnemy() if enemy and enemy.Root then TeleportToEnemy(enemy.Root.CFrame) end end task.wait(0.15) end end) end end})
-DungeonTab:AddToggle({Name = "Dungeon Kill Aura", Default = false, Callback = function(Value) if Value then spawn(function() while Value and AutoDungeonKill do if IsAlive() and IsInDungeon() then local root = GetRootPart() if root then local enemies = GetDungeonEnemies() for _, enemy in pairs(enemies) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end task.wait(0.1) end end) end end})
+
+DungeonTab:AddToggle({Name = "Dungeon Kill Aura", Default = false, Callback = function(Value) if Value then spawn(function() while Value and AutoDungeonKill do if IsAlive() and IsInDungeon() then local root = GetRootPart() if root then local enemies = GetDungeonEnemies() for _, enemy in pairs(enemies) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end task.wait(0.05) end end) end end})
+
+DungeonTab:AddToggle({Name = "Dungeon Bring All Enemies", Default = false, Callback = function(Value) if Value then spawn(function() while Value do if IsAlive() and IsInDungeon() then local root = GetRootPart() if root then local enemies = GetDungeonEnemies() for _, enemy in pairs(enemies) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end task.wait(0.1) end end) end end})
 
 DungeonTab:AddSection({Name = "🎮 Dungeon Settings"})
 DungeonTab:AddDropdown({Name = "Difficulty", Default = Config.DungeonDifficulty, Options = {"Easy", "Normal", "Hard"}, Callback = function(Value) DungeonDifficulty = Value Config.DungeonDifficulty = Value end})
@@ -750,10 +1039,39 @@ SettingsTab:AddButton({Name = "Destroy Script", Callback = function() AutoKillEn
 Player.CharacterAdded:Connect(function(char) if AutoRespawnEnabled and LastQuestPointPosition then task.wait(1.5) local root = char:WaitForChild("HumanoidRootPart", 5) if root then root.CFrame = CFrame.new(LastQuestPointPosition) * CFrame.new(0, 5, 0) end end end)
 
 -- UPDATE LOOP
-spawn(function() while task.wait(0.5) do EnemyLabel:Set("Enemies: " .. #GetQuestEnemies()) DeadEnemyLabel:Set("Dead: " .. #GetDeadEnemies()) AliveLabel:Set(IsAlive() and "Player: ✅" or "Player: ☠️") local skip = 0 for _ in pairs(SkippedEnemies) do skip = skip + 1 end SkippedLabel:Set("Skipped: " .. skip) NPCLabel:Set("NPCs: " .. #GetQuestNPCs()) local qp = GetQuestPoint() QuestPointLabel:Set(qp and "Quest: ✅" or "Quest: ❌") AriseCountLabel:Set("Arise: " .. AriseCount) CollectCountLabel:Set("Collect: " .. CollectCount) local a, c = FindAriseButton(), FindCollectButton() ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) InDungeonLabel:Set(IsInDungeon() and "In Dungeon: ✅" or "In Dungeon: ❌") DungeonEnemyLabel:Set("Dungeon Enemies: " .. #GetDungeonEnemies()) local portal = GetPortalPart() PortalLabel:Set(portal and "Portal: ✅" or "Portal: ❌") DeadCountLabel:Set("Dead Enemies: " .. #GetAllDeadEnemies()) CollectedLabel:Set("Collected: " .. TotalCollected) StatPointsLabel:Set("Stat Points: " .. GetAvailableStatPoints()) if AutoQuestEnabled then if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") elseif QuestState == "WAITING_SPAWN" then StatusLabel:Set("Waiting ⏳") elseif QuestState == "KILLING" then StatusLabel:Set("Killing 🔥") elseif QuestState == "ARISE_COLLECT" then StatusLabel:Set("Arise 👻") end else StatusLabel:Set("Idle 💤") end end end)
-
-spawn(function() while task.wait(0.15) do if not AutoQuestEnabled and IsAlive() and HasAriseOrCollect() then if AutoAriseEnabled or AutoCollectEnabled then ClickAllAriseCollect() end end end end)
-
+spawn(function() while task.wait(0.5) do 
+    EnemyLabel:Set("Enemies: " .. #GetQuestEnemies()) 
+    DeadEnemyLabel:Set("Dead: " .. #GetDeadEnemies()) 
+    AliveLabel:Set(IsAlive() and "Player: ✅" or "Player: ☠️") 
+    local skip = 0 for _ in pairs(SkippedEnemies) do skip = skip + 1 end 
+    SkippedLabel:Set("Skipped: " .. skip) 
+    KillCountLabel:Set("Kills: " .. KillCount)
+    RangeEnemiesLabel:Set("In Range: " .. #GetAllEnemiesInRange())
+    NPCLabel:Set("NPCs: " .. #GetQuestNPCs()) 
+    local qp = GetQuestPoint() 
+    QuestPointLabel:Set(qp and "Quest: ✅" or "Quest: ❌") 
+    AriseCountLabel:Set("Arise: " .. AriseCount) 
+    CollectCountLabel:Set("Collect: " .. CollectCount) 
+    local a, c = FindAriseButton(), FindCollectButton() 
+    ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) 
+    InDungeonLabel:Set(IsInDungeon() and "In Dungeon: ✅" or "In Dungeon: ❌") 
+    DungeonEnemyLabel:Set("Dungeon Enemies: " .. #GetDungeonEnemies()) 
+    local portal = GetPortalPart() 
+    PortalLabel:Set(portal and "Portal: ✅" or "Portal: ❌") 
+    DeadCountLabel:Set("Dead Enemies: " .. #GetAllDeadEnemies()) 
+    CollectedLabel:Set("Collected: " .. TotalCollected) 
+    StatPointsLabel:Set("Stat Points: " .. GetAvailableStatPoints()) 
+    if AutoQuestEnabled then 
+        if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") 
+        elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") 
+        elseif QuestState == "WAITING_SPAWN" then StatusLabel:Set("Waiting ⏳") 
+        elseif QuestState == "KILLING" then StatusLabel:Set("Killing 🔥") 
+        elseif QuestState == "ARISE_COLLECT" then StatusLabel:Set("Arise 👻") 
+        end 
+    else 
+        StatusLabel:Set("Idle 💤") 
+    end 
+end end)
 OrionLib:Init()
 
 print([[
