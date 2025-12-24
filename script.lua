@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- PART 1 of 3 - Solo Leveling ARISE RAGNAROK (IMPROVED)
+-- PART 1 of 4 - Solo Leveling ARISE RAGNAROK (WITH FAST ATTACK)
 -- ═══════════════════════════════════════════════════════════════════════
 
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
@@ -17,6 +17,8 @@ local ConfigFileName = "SoloLevelingConfig.json"
 local Config = {
     AutoKill = false,
     KillAura = false,
+    AutoAttack = false,
+    AttackSpeed = 10,
     AutoQuest = false,
     AutoArise = false,
     AutoCollect = false,
@@ -75,6 +77,8 @@ LoadConfig()
 
 local AutoKillEnabled = Config.AutoKill
 local KillAuraEnabled = Config.KillAura
+local AutoAttackEnabled = Config.AutoAttack
+local AttackSpeed = Config.AttackSpeed
 local AutoQuestEnabled = Config.AutoQuest
 local AutoAriseEnabled = Config.AutoArise
 local AutoCollectEnabled = Config.AutoCollect
@@ -100,6 +104,7 @@ local Events = ReplicatedStorage:WaitForChild("Events")
 local QuestEvents = Events:WaitForChild("Quest")
 local DialogRemote = QuestEvents:FindFirstChild("Dialog")
 local Combat = Events:WaitForChild("Combat")
+local AttackEvent = Combat:WaitForChild("Attack")
 
 local function GetCharacter() return Player.Character end
 local function GetHumanoid() local char = GetCharacter() if char then return char:FindFirstChild("Humanoid") end return nil end
@@ -108,6 +113,16 @@ local function IsAlive() local hum = GetHumanoid() if hum and hum.Health > 0 the
 local function TeleportTo(cframe) local root = GetRootPart() if root and IsAlive() then root.CFrame = cframe end end
 local function IsPlayer(name) for _, plr in pairs(Players:GetPlayers()) do if plr.Name == name then return true end end return false end
 local function IsQuestEnemy(name) if name:match("%d+_E_%d+") then return true end return false end
+
+-- FAST ATTACK FUNCTION
+local function FastAttack()
+    if not IsAlive() then return end
+    for i = 1, AttackSpeed do
+        pcall(function()
+            AttackEvent:FireServer()
+        end)
+    end
+end
 
 local function IsInDungeon()
     for _, gui in pairs(PlayerGui:GetDescendants()) do
@@ -503,7 +518,7 @@ local function ClearSkippedEnemies() SkippedEnemies = {} end
 -- END PART 2 - Continue to PART 3
 -- ═══════════════════════════════════════════════════════════════════════
 -- ═══════════════════════════════════════════════════════════════════════
--- PART 3A of 4 - Dungeon & Portal Functions
+-- PART 3A of 4 - Dungeon & Portal Functions (WITH FAST ATTACK)
 -- ═══════════════════════════════════════════════════════════════════════
 
 local KillTab = Window:MakeTab({Name = "Auto Kill", Icon = "rbxassetid://4483345998", PremiumOnly = false})
@@ -511,6 +526,38 @@ KillTab:AddSection({Name = "⚔️ Auto Kill (Quest)"})
 KillTab:AddToggle({Name = "Auto Kill", Default = Config.AutoKill, Callback = function(Value) AutoKillEnabled = Value Config.AutoKill = Value if Value then spawn(function() while AutoKillEnabled do if IsAlive() and not IsInDungeon() then local enemy = GetClosestQuestEnemy() if enemy and enemy.Root then TeleportTo(enemy.Root.CFrame * CFrame.new(0, 0, 3)) end end task.wait(0.1) end end) end end})
 KillTab:AddToggle({Name = "Kill Aura", Default = Config.KillAura, Callback = function(Value) KillAuraEnabled = Value Config.KillAura = Value end})
 RunService.Heartbeat:Connect(function() if KillAuraEnabled and IsAlive() and not IsInDungeon() then local root = GetRootPart() if root then for _, enemy in pairs(GetQuestEnemies()) do if enemy.Root then enemy.Root.CFrame = root.CFrame * CFrame.new(0, 0, 3) end end end end end)
+
+KillTab:AddSection({Name = "⚡ Fast Attack"})
+KillTab:AddToggle({
+    Name = "Auto Attack", 
+    Default = Config.AutoAttack, 
+    Callback = function(Value) 
+        AutoAttackEnabled = Value 
+        Config.AutoAttack = Value 
+        if Value then 
+            spawn(function() 
+                while AutoAttackEnabled do 
+                    if IsAlive() and (#GetQuestEnemies() > 0 or #GetDungeonEnemies() > 0) then 
+                        FastAttack() 
+                    end 
+                    task.wait(0.05) 
+                end 
+            end) 
+        end 
+    end
+})
+KillTab:AddSlider({
+    Name = "Attack Speed", 
+    Min = 1, 
+    Max = 50, 
+    Default = Config.AttackSpeed, 
+    Increment = 1, 
+    Callback = function(Value) 
+        AttackSpeed = Value 
+        Config.AttackSpeed = Value 
+    end
+})
+
 local EnemyLabel = KillTab:AddLabel("Enemies: 0")
 local DeadEnemyLabel = KillTab:AddLabel("Dead: 0")
 local AliveLabel = KillTab:AddLabel("Player: ✅")
