@@ -850,164 +850,7 @@ DungeonTab:AddButton({Name = "Count Enemies", Callback = function() local enemie
 -- ═══════════════════════════════════════════════════════════════════════
 -- END PART 3A - Continue to PART 3B
 -- ═══════════════════════════════════════════════════════════════════════
--- ═══════════════════════════════════════════════════════════════════════
--- PART 3B of 4 - Quest, Player, Settings & Main Loop
--- WITH AUTO COLLECT ALL DEAD + AUTO STATS (FIXED)
--- ═══════════════════════════════════════════════════════════════════════
-
--- ═══════════════════════════════════════════════════════════════════════
--- AUTO COLLECT ALL DEAD ENEMIES FUNCTION (FIXED - Only with buttons)
--- ═══════════════════════════════════════════════════════════════════════
-
-local AutoCollectAllDead = false
-local TotalCollected = 0
-
-local function GetAllDeadEnemies()
-    local deadEnemies = {}
-    local playerName = Player.Name
-    
-    local folders = {
-        Workspace:FindFirstChild("EntityFolder"),
-        Workspace:FindFirstChild("EntityFolder_Hitted1"),
-        Workspace:FindFirstChild("EntityFolder_Hitted2")
-    }
-    
-    for _, folder in pairs(folders) do
-        if folder then
-            for _, child in pairs(folder:GetChildren()) do
-                if child:IsA("Model") then
-                    local name = child.Name
-                    if IsPlayer(name) or name == playerName then continue end
-                    
-                    local hum = child:FindFirstChild("Humanoid")
-                    if hum and hum.Health <= 0 then
-                        local root = child:FindFirstChild("HumanoidRootPart") 
-                            or child:FindFirstChild("Torso") 
-                            or child:FindFirstChild("Head")
-                        if root then
-                            table.insert(deadEnemies, {
-                                Model = child,
-                                Root = root,
-                                Humanoid = hum,
-                                Name = name
-                            })
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    return deadEnemies
-end
-
--- ═══════════════════════════════════════════════════════════════════════
--- AUTO STATS FUNCTIONS
--- ═══════════════════════════════════════════════════════════════════════
-
-local AutoStatsEnabled = false
-local StatPriority = "DMG"
-
-local function FindStatAddButton(statName)
-    for _, gui in pairs(PlayerGui:GetDescendants()) do
-        if gui:IsA("Frame") and gui.Name == statName then
-            for _, child in pairs(gui:GetDescendants()) do
-                if child:IsA("ImageButton") or child:IsA("TextButton") then
-                    if child.Name == "Add" or (child.Parent and child.Parent.Name == "Add") then
-                        return child
-                    end
-                end
-            end
-        end
-    end
-    
-    for _, gui in pairs(PlayerGui:GetDescendants()) do
-        if gui:IsA("Frame") and gui.Name == "Stats" and gui.Visible then
-            for _, child in pairs(gui:GetDescendants()) do
-                if child:IsA("Frame") and child.Name == statName then
-                    for _, btn in pairs(child:GetDescendants()) do
-                        if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and 
-                           (btn.Name == "Add" or (btn.Parent and btn.Parent.Name == "Add")) then
-                            return btn
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    return nil
-end
-
-local function GetAvailableStatPoints()
-    for _, gui in pairs(PlayerGui:GetDescendants()) do
-        if gui:IsA("TextLabel") then
-            local text = gui.Text
-            if text:find("Points") or text:find("POINTS") then
-                local points = text:match("%d+")
-                if points then
-                    return tonumber(points)
-                end
-            end
-        end
-    end
-    return 0
-end
-
-local function AddStatPoint(statName)
-    local btn = FindStatAddButton(statName)
-    if btn then
-        ClickButton(btn)
-        return true
-    end
-    return false
-end
-
--- ═══════════════════════════════════════════════════════════════════════
--- QUEST TAB
--- ═══════════════════════════════════════════════════════════════════════
-
-local QuestTab = Window:MakeTab({Name = "Quest", Icon = "rbxassetid://4483345998", PremiumOnly = false})
-QuestTab:AddSection({Name = "📜 Auto Quest"})
-QuestTab:AddToggle({Name = "Auto Respawn", Default = Config.AutoRespawn, Callback = function(Value) AutoRespawnEnabled = Value Config.AutoRespawn = Value end})
-QuestTab:AddToggle({Name = "Auto Quest", Default = Config.AutoQuest, Callback = function(Value) AutoQuestEnabled = Value Config.AutoQuest = Value QuestState = "IDLE" ClearSkippedEnemies() if Value then spawn(function() while AutoQuestEnabled do if not IsAlive() then task.wait(1) continue end local questPoint = GetQuestPoint() local enemies = GetQuestEnemies() if QuestState == "IDLE" then local npc = GetClosestQuestNPC() if npc then local root = GetRootPart() local distance = root and (root.Position - npc.Root.Position).Magnitude or 9999 if distance > 50 then TeleportTo(npc.Root.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(npc.Root.CFrame * CFrame.new(0, 20, 0)) task.wait(0.3) TeleportTo(npc.Root.CFrame * CFrame.new(0, 0, -5)) task.wait(0.5) else TeleportTo(npc.Root.CFrame * CFrame.new(0, 0, -5)) task.wait(0.5) end AcceptQuest(npc.Name) local accepted = false for i = 1, 10 do task.wait(0.5) if GetQuestPoint() then accepted = true break end end if accepted then QuestState = "WAITING_QUEST_POINT" else AcceptQuest(npc.Name) task.wait(0.5) if GetQuestPoint() then QuestState = "WAITING_QUEST_POINT" end end end elseif QuestState == "WAITING_QUEST_POINT" then if questPoint then LastQuestPointPosition = questPoint.Position local root = GetRootPart() local distance = root and (root.Position - questPoint.Position).Magnitude or 9999 if distance > 50 then TeleportTo(questPoint.CFrame * CFrame.new(0, 100, 0)) task.wait(0.3) TeleportTo(questPoint.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(questPoint.CFrame * CFrame.new(0, 5, 0)) task.wait(0.5) else TeleportTo(questPoint.CFrame * CFrame.new(0, 5, 0)) task.wait(0.5) end QuestState = "WAITING_SPAWN" end elseif QuestState == "WAITING_SPAWN" then for i = 15, 1, -1 do if not AutoQuestEnabled or #GetQuestEnemies() > 0 then break end task.wait(1) end QuestState = "KILLING" ClearSkippedEnemies() elseif QuestState == "KILLING" then if #enemies == 0 and not questPoint then QuestState = "ARISE_COLLECT" end elseif QuestState == "ARISE_COLLECT" then local deadList = GetDeadEnemies() if #deadList > 0 then for _, dead in pairs(deadList) do if not AutoQuestEnabled or SkippedEnemies[dead.Name] then continue end if AutoTPDeadEnabled and dead.Root then TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3)) end local found = false for i = 1, 8 do if HasAriseOrCollect() then found = true break end task.wait(0.25) end if found then while HasAriseOrCollect() and AutoQuestEnabled do ClickAllAriseCollect() task.wait(0.3) end else SkippedEnemies[dead.Name] = true end task.wait(0.3) end end if #GetDeadEnemies() == 0 then QuestState = "IDLE" LastQuestPointPosition = nil ClearSkippedEnemies() end end task.wait(0.5) end end) end end})
-
-QuestTab:AddSection({Name = "🔘 Manual"})
-QuestTab:AddButton({Name = "TP to NPC", Callback = function() local npc = GetClosestQuestNPC() if npc then TeleportTo(npc.Root.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(npc.Root.CFrame * CFrame.new(0, 0, -5)) end end})
-QuestTab:AddButton({Name = "Accept Quest", Callback = function() local npc = GetClosestQuestNPC() if npc then AcceptQuest(npc.Name) end end})
-QuestTab:AddButton({Name = "Go to Quest", Callback = function() local qp = GetQuestPoint() if qp then TeleportTo(qp.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(qp.CFrame * CFrame.new(0, 5, 0)) end end})
-local NPCLabel = QuestTab:AddLabel("NPCs: 0")
-local QuestPointLabel = QuestTab:AddLabel("Quest: ❌")
-local StatusLabel = QuestTab:AddLabel("Status: Idle")
-
--- ═══════════════════════════════════════════════════════════════════════
--- COLLECT TAB (FIXED - Only TP to enemies with Arise/Collect button)
--- ═══════════════════════════════════════════════════════════════════════
-
-local CollectTab = Window:MakeTab({Name = "Collect", Icon = "rbxassetid://4483345998", PremiumOnly = false})
-CollectTab:AddSection({Name = "💀 Auto Collect All Dead"})
-
-local DeadCountLabel = CollectTab:AddLabel("Dead Enemies: 0")
-local CollectedLabel = CollectTab:AddLabel("Collected: 0")
-
-CollectTab:AddToggle({
-    Name = "Auto Collect All Dead", 
-    Default = false, 
-    Callback = function(Value) 
-        AutoCollectAllDead = Value 
-        
-        if Value then 
-            spawn(function() 
-                while AutoCollectAllDead do 
-                    if IsAlive() then 
-                        local deadList = GetAllDeadEnemies()
-                        
-                        for _, dead in pairs(deadList) do
-                            if not AutoCollectAllDead then break end
-                            if not IsAlive() then break end
-                            
-                            if dead.Root then
-                                -- Teleport to dead enemy
+port to dead enemy
                                 TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3))
                                 task.wait(0.3)
                                 
@@ -1294,6 +1137,443 @@ print([[
 ║   ✅ Auto Stats Assignment                                           ║
 ║   ✅ Auto Join Portal Fixed                                          ║
 ║   ✅ Dungeon Kill Fixed                                              ║
+╚═══════════════════════════════════════════════════════════════════════╝
+]])
+-- ═══════════════════════════════════════════════════════════════════════
+-- END PART 3B - SCRIPT COMPLETE!
+-- ═══════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+-- PART 3B of 4 - CLEANED VERSION (No Manual Buttons) + FIXED AUTO STATS
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO COLLECT ALL DEAD ENEMIES FUNCTION
+-- ═══════════════════════════════════════════════════════════════════════
+
+local AutoCollectAllDead = false
+local TotalCollected = 0
+
+local function GetAllDeadEnemies()
+    local deadEnemies = {}
+    local playerName = Player.Name
+    
+    local folders = {
+        Workspace:FindFirstChild("EntityFolder"),
+        Workspace:FindFirstChild("EntityFolder_Hitted1"),
+        Workspace:FindFirstChild("EntityFolder_Hitted2")
+    }
+    
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if child:IsA("Model") then
+                    local name = child.Name
+                    if IsPlayer(name) or name == playerName then continue end
+                    
+                    local hum = child:FindFirstChild("Humanoid")
+                    if hum and hum.Health <= 0 then
+                        local root = child:FindFirstChild("HumanoidRootPart") 
+                            or child:FindFirstChild("Torso") 
+                            or child:FindFirstChild("Head")
+                        if root then
+                            table.insert(deadEnemies, {
+                                Model = child,
+                                Root = root,
+                                Humanoid = hum,
+                                Name = name
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return deadEnemies
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO STATS FUNCTIONS (FIXED)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local AutoStatsEnabled = false
+local StatPriority = "DMG"
+
+local function FindStatAddButton(statName)
+    -- Method 1: Search in Stats frame
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Stats" then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("Frame") and child.Name == statName then
+                    for _, btn in pairs(child:GetDescendants()) do
+                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                            if btn.Name == "Add" or (btn.Parent and btn.Parent.Name == "Add") then
+                                if btn.Visible then
+                                    return btn
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Method 2: Search in Down Frame
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Down Frame" then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("Frame") and child.Name == statName then
+                    for _, btn in pairs(child:GetDescendants()) do
+                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                            if btn.Name == "Add" or (btn.Parent and btn.Parent.Name == "Add") then
+                                return btn
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Method 3: Direct search by path pattern
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if (gui:IsA("ImageButton") or gui:IsA("TextButton")) then
+            local parent = gui.Parent
+            if parent and parent.Name == "Add" then
+                local grandParent = parent.Parent
+                if grandParent and grandParent.Name == statName then
+                    return gui
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function ClickStatButton(statName)
+    local btn = FindStatAddButton(statName)
+    if btn then
+        -- Multiple click methods
+        pcall(function()
+            firesignal(btn.MouseButton1Click)
+        end)
+        pcall(function()
+            firesignal(btn.MouseButton1Down)
+            task.wait(0.05)
+            firesignal(btn.MouseButton1Up)
+        end)
+        pcall(function()
+            for _, conn in pairs(getconnections(btn.MouseButton1Click)) do
+                conn:Fire()
+            end
+        end)
+        pcall(function()
+            fireclick(btn)
+        end)
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+            task.wait(0.05)
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+        end)
+        return true
+    end
+    return false
+end
+
+local function GetAvailableStatPoints()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("TextLabel") then
+            local text = gui.Text
+            -- Look for patterns like "Points: 5" or "5 Points" or "[5]"
+            if text:find("Points") or text:find("POINTS") or text:find("points") then
+                local points = text:match("%d+")
+                if points then
+                    return tonumber(points)
+                end
+            end
+        end
+    end
+    
+    -- Alternative: Look in Stats frame
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Stats" then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("TextLabel") then
+                    local points = child.Text:match("%d+")
+                    if points and child.Name:find("Point") then
+                        return tonumber(points)
+                    end
+                end
+            end
+        end
+    end
+    
+    return 0
+end
+
+local function IsStatsWindowOpen()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Stats" and gui.Visible then
+            return true
+        end
+    end
+    return false
+end
+
+local function OpenStatsWindow()
+    -- Find and click Stats button
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if (gui:IsA("ImageButton") or gui:IsA("TextButton")) then
+            if gui.Parent and gui.Parent.Name == "Stats" then
+                ClickButton(gui)
+                return true
+            end
+        end
+    end
+    
+    -- Alternative: Look for Stats in Interface Buttons
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Interface Buttons" then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("Frame") and child.Name == "Stats" then
+                    for _, btn in pairs(child:GetDescendants()) do
+                        if btn:IsA("ImageButton") or btn:IsA("TextButton") then
+                            ClickButton(btn)
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- QUEST TAB (CLEANED - No Manual)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local QuestTab = Window:MakeTab({Name = "Quest", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+QuestTab:AddSection({Name = "📜 Auto Quest"})
+QuestTab:AddToggle({Name = "Auto Respawn", Default = Config.AutoRespawn, Callback = function(Value) AutoRespawnEnabled = Value Config.AutoRespawn = Value end})
+QuestTab:AddToggle({Name = "Auto Quest", Default = Config.AutoQuest, Callback = function(Value) AutoQuestEnabled = Value Config.AutoQuest = Value QuestState = "IDLE" ClearSkippedEnemies() if Value then spawn(function() while AutoQuestEnabled do if not IsAlive() then task.wait(1) continue end local questPoint = GetQuestPoint() local enemies = GetQuestEnemies() if QuestState == "IDLE" then local npc = GetClosestQuestNPC() if npc then local root = GetRootPart() local distance = root and (root.Position - npc.Root.Position).Magnitude or 9999 if distance > 50 then TeleportTo(npc.Root.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(npc.Root.CFrame * CFrame.new(0, 20, 0)) task.wait(0.3) TeleportTo(npc.Root.CFrame * CFrame.new(0, 0, -5)) task.wait(0.5) else TeleportTo(npc.Root.CFrame * CFrame.new(0, 0, -5)) task.wait(0.5) end AcceptQuest(npc.Name) local accepted = false for i = 1, 10 do task.wait(0.5) if GetQuestPoint() then accepted = true break end end if accepted then QuestState = "WAITING_QUEST_POINT" else AcceptQuest(npc.Name) task.wait(0.5) if GetQuestPoint() then QuestState = "WAITING_QUEST_POINT" end end end elseif QuestState == "WAITING_QUEST_POINT" then if questPoint then LastQuestPointPosition = questPoint.Position local root = GetRootPart() local distance = root and (root.Position - questPoint.Position).Magnitude or 9999 if distance > 50 then TeleportTo(questPoint.CFrame * CFrame.new(0, 100, 0)) task.wait(0.3) TeleportTo(questPoint.CFrame * CFrame.new(0, 50, 0)) task.wait(0.3) TeleportTo(questPoint.CFrame * CFrame.new(0, 5, 0)) task.wait(0.5) else TeleportTo(questPoint.CFrame * CFrame.new(0, 5, 0)) task.wait(0.5) end QuestState = "WAITING_SPAWN" end elseif QuestState == "WAITING_SPAWN" then for i = 15, 1, -1 do if not AutoQuestEnabled or #GetQuestEnemies() > 0 then break end task.wait(1) end QuestState = "KILLING" ClearSkippedEnemies() elseif QuestState == "KILLING" then if #enemies == 0 and not questPoint then QuestState = "ARISE_COLLECT" end elseif QuestState == "ARISE_COLLECT" then local deadList = GetDeadEnemies() if #deadList > 0 then for _, dead in pairs(deadList) do if not AutoQuestEnabled or SkippedEnemies[dead.Name] then continue end if AutoTPDeadEnabled and dead.Root then TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3)) end local found = false for i = 1, 8 do if HasAriseOrCollect() then found = true break end task.wait(0.25) end if found then while HasAriseOrCollect() and AutoQuestEnabled do ClickAllAriseCollect() task.wait(0.3) end else SkippedEnemies[dead.Name] = true end task.wait(0.3) end end if #GetDeadEnemies() == 0 then QuestState = "IDLE" LastQuestPointPosition = nil ClearSkippedEnemies() end end task.wait(0.5) end end) end end})
+
+QuestTab:AddSection({Name = "📊 Status"})
+local NPCLabel = QuestTab:AddLabel("NPCs: 0")
+local QuestPointLabel = QuestTab:AddLabel("Quest: ❌")
+local StatusLabel = QuestTab:AddLabel("Status: Idle")
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- COLLECT TAB (CLEANED - No Manual)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local CollectTab = Window:MakeTab({Name = "Collect", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+CollectTab:AddSection({Name = "💀 Auto Collect All Dead"})
+
+local DeadCountLabel = CollectTab:AddLabel("Dead Enemies: 0")
+local CollectedLabel = CollectTab:AddLabel("Collected: 0")
+
+CollectTab:AddToggle({
+    Name = "Auto Collect All Dead", 
+    Default = false, 
+    Callback = function(Value) 
+        AutoCollectAllDead = Value 
+        
+        if Value then 
+            spawn(function() 
+                while AutoCollectAllDead do 
+                    if IsAlive() then 
+                        local deadList = GetAllDeadEnemies()
+                        
+                        for _, dead in pairs(deadList) do
+                            if not AutoCollectAllDead then break end
+                            if not IsAlive() then break end
+                            
+                            if dead.Root then
+                                TeleportTo(dead.Root.CFrame * CFrame.new(0, 0, 3))
+                                task.wait(0.3)
+                                
+                                local hasButton = false
+                                for i = 1, 5 do
+                                    if HasAriseOrCollect() then
+                                        hasButton = true
+                                        break
+                                    end
+                                    task.wait(0.15)
+                                end
+                                
+                                if hasButton then
+                                    while HasAriseOrCollect() do
+                                        ClickAllAriseCollect()
+                                        TotalCollected = TotalCollected + 1
+                                        task.wait(0.2)
+                                    end
+                                    task.wait(0.2)
+                                end
+                            end
+                        end
+                    end 
+                    task.wait(0.5) 
+                end 
+            end) 
+        end 
+    end
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- STATS TAB (CLEANED - No Manual + FIXED AUTO STATS)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local StatsTab = Window:MakeTab({Name = "Stats", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+StatsTab:AddSection({Name = "📊 Auto Stats"})
+
+local StatPointsLabel = StatsTab:AddLabel("Stat Points: 0")
+local StatStatusLabel = StatsTab:AddLabel("Status: Idle")
+
+StatsTab:AddDropdown({
+    Name = "Stat Priority", 
+    Default = "DMG", 
+    Options = {"DMG", "VIT", "AGI", "MNA"}, 
+    Callback = function(Value) 
+        StatPriority = Value 
+    end
+})
+
+StatsTab:AddToggle({
+    Name = "Auto Assign Stats", 
+    Default = false, 
+    Callback = function(Value) 
+        AutoStatsEnabled = Value 
+        
+        if Value then 
+            spawn(function() 
+                while AutoStatsEnabled do 
+                    if IsAlive() then
+                        -- Check if stats window is open
+                        if not IsStatsWindowOpen() then
+                            StatStatusLabel:Set("Status: Opening Stats...")
+                            OpenStatsWindow()
+                            task.wait(0.5)
+                        end
+                        
+                        -- Try to add stat point
+                        local success = ClickStatButton(StatPriority)
+                        if success then
+                            StatStatusLabel:Set("Status: Added " .. StatPriority .. " ✅")
+                        else
+                            StatStatusLabel:Set("Status: No points or button not found")
+                        end
+                    end 
+                    task.wait(0.5) 
+                end 
+                StatStatusLabel:Set("Status: Idle")
+            end) 
+        end 
+    end
+})
+
+StatsTab:AddToggle({
+    Name = "Auto Open Stats Window", 
+    Default = false, 
+    Callback = function(Value) 
+        if Value then
+            spawn(function()
+                while Value and AutoStatsEnabled do
+                    if not IsStatsWindowOpen() then
+                        OpenStatsWindow()
+                    end
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- PLAYER TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
+local PlayerTab = Window:MakeTab({Name = "Player", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+PlayerTab:AddSection({Name = "🏃 Movement"})
+PlayerTab:AddSlider({Name = "Walk Speed", Min = 16, Max = 300, Default = Config.WalkSpeed, Increment = 5, Callback = function(v) local c = GetCharacter() if c and c:FindFirstChild("Humanoid") then c.Humanoid.WalkSpeed = v end Config.WalkSpeed = v end})
+PlayerTab:AddSlider({Name = "Jump Power", Min = 50, Max = 300, Default = Config.JumpPower, Increment = 5, Callback = function(v) local c = GetCharacter() if c and c:FindFirstChild("Humanoid") then c.Humanoid.JumpPower = v end Config.JumpPower = v end})
+local InfJump = Config.InfJump
+PlayerTab:AddToggle({Name = "Infinite Jump", Default = Config.InfJump, Callback = function(v) InfJump = v Config.InfJump = v end})
+game:GetService("UserInputService").JumpRequest:Connect(function() if InfJump then local c = GetCharacter() if c and c:FindFirstChild("Humanoid") then c.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
+local Noclip = Config.Noclip
+PlayerTab:AddToggle({Name = "Noclip", Default = Config.Noclip, Callback = function(v) Noclip = v Config.Noclip = v end})
+RunService.Stepped:Connect(function() if Noclip then local c = GetCharacter() if c then for _, p in pairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end end)
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- SETTINGS TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
+local SettingsTab = Window:MakeTab({Name = "Settings", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+SettingsTab:AddSection({Name = "💾 Config"})
+SettingsTab:AddButton({Name = "💾 Save Config", Callback = function() SaveConfig() end})
+SettingsTab:AddButton({Name = "📂 Load Config", Callback = function() LoadConfig() OrionLib:MakeNotification({Name = "Config", Content = "Restart script to apply!", Time = 3}) end})
+SettingsTab:AddButton({Name = "🗑️ Delete Config", Callback = function() DeleteConfig() end})
+SettingsTab:AddSection({Name = "⚙️ UI"})
+SettingsTab:AddButton({Name = "Hide/Show UI", Callback = function() OrionLib:ToggleUI() end})
+SettingsTab:AddButton({Name = "Destroy Script", Callback = function() AutoKillEnabled = false AutoQuestEnabled = false AutoDungeonEnabled = false AutoDungeonKill = false AutoJoinPortal = false AutoFullDungeon = false AutoCollectAllDead = false AutoStatsEnabled = false OrionLib:Destroy() end})
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- AUTO RESPAWN & UPDATE LOOP
+-- ═══════════════════════════════════════════════════════════════════════
+
+Player.CharacterAdded:Connect(function(char) if AutoRespawnEnabled and LastQuestPointPosition then task.wait(1.5) local root = char:WaitForChild("HumanoidRootPart", 5) if root then root.CFrame = CFrame.new(LastQuestPointPosition) * CFrame.new(0, 5, 0) end end end)
+
+spawn(function() 
+    while task.wait(0.5) do 
+        EnemyLabel:Set("Enemies: " .. #GetQuestEnemies()) 
+        DeadEnemyLabel:Set("Dead: " .. #GetDeadEnemies()) 
+        AliveLabel:Set(IsAlive() and "Player: ✅" or "Player: ☠️") 
+        local skip = 0 
+        for _ in pairs(SkippedEnemies) do skip = skip + 1 end 
+        SkippedLabel:Set("Skipped: " .. skip) 
+        NPCLabel:Set("NPCs: " .. #GetQuestNPCs()) 
+        local qp = GetQuestPoint() 
+        QuestPointLabel:Set(qp and "Quest: ✅" or "Quest: ❌") 
+        AriseCountLabel:Set("Arise: " .. AriseCount) 
+        CollectCountLabel:Set("Collect: " .. CollectCount) 
+        local a, c = FindAriseButton(), FindCollectButton() 
+        ButtonFoundLabel:Set((a and "Arise ✅ " or "Arise ❌ ") .. (c and "Collect ✅" or "Collect ❌")) 
+        InDungeonLabel:Set(IsInDungeon() and "In Dungeon: ✅" or "In Dungeon: ❌") 
+        DungeonEnemyLabel:Set("Dungeon Enemies: " .. #GetDungeonEnemies())
+        local portal = GetPortalPart()
+        PortalLabel:Set(portal and "Portal: ✅" or "Portal: ❌")
+        DeadCountLabel:Set("Dead Enemies: " .. #GetAllDeadEnemies())
+        CollectedLabel:Set("Collected: " .. TotalCollected)
+        StatPointsLabel:Set("Stat Points: " .. GetAvailableStatPoints())
+        if AutoQuestEnabled then 
+            if QuestState == "IDLE" then StatusLabel:Set("Finding 🔍") 
+            elseif QuestState == "WAITING_QUEST_POINT" then StatusLabel:Set("Going ⏳") 
+            elseif QuestState == "WAITING_SPAWN" then StatusLabel:Set("Waiting ⏳") 
+            elseif QuestState == "KILLING" then StatusLabel:Set("Killing 🔥") 
+            elseif QuestState == "ARISE_COLLECT" then StatusLabel:Set("Arise 👻") 
+            end 
+        else 
+            StatusLabel:Set("Idle 💤") 
+        end 
+    end 
+end)
+
+spawn(function() while task.wait(0.15) do if not AutoQuestEnabled and IsAlive() and HasAriseOrCollect() then if AutoAriseEnabled or AutoCollectEnabled then ClickAllAriseCollect() end end end end)
+
+OrionLib:Init()
+
+print([[
+╔═══════════════════════════════════════════════════════════════════════╗
+║   SOLO LEVELING - ARISE RAGNAROK (CLEANED VERSION)                   ║
+║   ✅ All Manual Buttons Removed                                      ║
+║   ✅ Auto Stats Fixed                                                ║
+║   ✅ Auto Collect All Dead                                           ║
+║   ✅ Clean UI                                                        ║
 ╚═══════════════════════════════════════════════════════════════════════╝
 ]])
 -- ═══════════════════════════════════════════════════════════════════════
