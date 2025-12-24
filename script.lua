@@ -518,7 +518,7 @@ local function ClearSkippedEnemies() SkippedEnemies = {} end
 -- END PART 2 - Continue to PART 3
 -- ═══════════════════════════════════════════════════════════════════════
 -- ═══════════════════════════════════════════════════════════════════════
--- PART 3A of 4 - Dungeon & Portal Functions (WITH FAST ATTACK)
+-- PART 3A of 4 - FIXED AUTO JOIN PORTAL
 -- ═══════════════════════════════════════════════════════════════════════
 
 local KillTab = Window:MakeTab({Name = "Auto Kill", Icon = "rbxassetid://4483345998", PremiumOnly = false})
@@ -578,29 +578,23 @@ AriseTab:AddButton({Name = "Click Arise", Callback = function() ClickButton(Find
 AriseTab:AddButton({Name = "Click Collect", Callback = function() ClickButton(FindCollectButton()) end})
 AriseTab:AddButton({Name = "Clear Skipped", Callback = function() ClearSkippedEnemies() end})
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- FIXED PORTAL FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════════════
+
 local AutoJoinPortal = false
 local AutoFullDungeon = false
-
-local function GetPortalPrompt()
-    local instanced = Workspace:FindFirstChild("Instanced")
-    if instanced then
-        local portal = instanced:FindFirstChild("Portal")
-        if portal then
-            for _, child in pairs(portal:GetDescendants()) do
-                if child:IsA("ProximityPrompt") then
-                    return child
-                end
-            end
-        end
-    end
-    return nil
-end
 
 local function GetPortalPart()
     local instanced = Workspace:FindFirstChild("Instanced")
     if instanced then
         local portal = instanced:FindFirstChild("Portal")
         if portal then
+            for _, child in pairs(portal:GetDescendants()) do
+                if child:IsA("BasePart") and child.Name == "Part" then
+                    return child
+                end
+            end
             for _, child in pairs(portal:GetDescendants()) do
                 if child:IsA("BasePart") then
                     return child
@@ -611,32 +605,100 @@ local function GetPortalPart()
     return nil
 end
 
-local function TriggerPortalPrompt()
-    local prompt = GetPortalPrompt()
-    if prompt then
-        pcall(function()
-            fireproximityprompt(prompt)
-        end)
-        pcall(function()
-            prompt:InputHoldBegin()
-            task.wait(0.5)
-            prompt:InputHoldEnd()
-        end)
+local function TouchPortal()
+    local portal = GetPortalPart()
+    if portal then
+        local char = Player.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                -- Teleport inside portal
+                hrp.CFrame = portal.CFrame
+                task.wait(0.1)
+                
+                -- Fire touch
+                pcall(function()
+                    firetouchinterest(hrp, portal, 0)
+                    task.wait(0.1)
+                    firetouchinterest(hrp, portal, 1)
+                end)
+                
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function FindDungeonGUIButton(buttonName)
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Dungeon" and gui.Visible then
+            for _, child in pairs(gui:GetDescendants()) do
+                if (child:IsA("TextButton") or child:IsA("ImageButton")) then
+                    if child.Name == buttonName or (child.Parent and child.Parent.Name == buttonName) then
+                        return child
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function FindStartDungeonButton()
+    for _, gui in pairs(PlayerGui:GetDescendants()) do
+        if gui:IsA("Frame") and gui.Name == "Start Dungeon" then
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("ImageButton") or child:IsA("TextButton") then
+                    return child
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function ClickDungeonButton(name)
+    local btn = FindDungeonGUIButton(name)
+    if btn then
+        ClickButton(btn)
         return true
     end
     return false
 end
 
-local function JoinPortal()
-    local portal = GetPortalPart()
-    if portal then
-        TeleportToEnemy(portal.CFrame)
-        task.wait(0.3)
-        TriggerPortalPrompt()
+local function SelectDifficulty(difficulty)
+    local diffBtn = FindDungeonGUIButton(difficulty)
+    if diffBtn then
+        ClickButton(diffBtn)
         return true
     end
     return false
 end
+
+local function JoinDungeonSolo()
+    -- Step 1: Select difficulty
+    SelectDifficulty(DungeonDifficulty)
+    task.wait(0.3)
+    
+    -- Step 2: Click Solo button
+    ClickDungeonButton("Solo")
+    task.wait(0.3)
+    
+    -- Step 3: Click Start button (in group section)
+    ClickDungeonButton("Start")
+    task.wait(0.3)
+    
+    -- Step 4: Click Start Dungeon button (top of screen)
+    local startBtn = FindStartDungeonButton()
+    if startBtn then
+        ClickButton(startBtn)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- DUNGEON TAB
+-- ═══════════════════════════════════════════════════════════════════════
 
 local DungeonTab = Window:MakeTab({Name = "Dungeon", Icon = "rbxassetid://4483345998", PremiumOnly = false})
 DungeonTab:AddSection({Name = "🏰 Dungeon Status"})
@@ -657,20 +719,47 @@ DungeonTab:AddToggle({
             spawn(function() 
                 while AutoJoinPortal do 
                     if IsAlive() and not IsInDungeon() then 
+                        DungeonStatusLabel:Set("Status: Finding Portal 🔍")
+                        
                         local portal = GetPortalPart()
                         if portal then
+                            -- Step 1: Teleport to portal
+                            DungeonStatusLabel:Set("Status: Going to Portal 🚶")
                             TeleportToEnemy(portal.CFrame)
                             task.wait(0.5)
-                            TriggerPortalPrompt()
+                            
+                            -- Step 2: Touch portal to open menu
+                            DungeonStatusLabel:Set("Status: Touching Portal 👆")
+                            TouchPortal()
+                            task.wait(0.8)
+                            
+                            -- Step 3: Select difficulty and join
+                            DungeonStatusLabel:Set("Status: Selecting " .. DungeonDifficulty .. " 📋")
+                            SelectDifficulty(DungeonDifficulty)
+                            task.wait(0.3)
+                            
+                            -- Step 4: Click Solo
+                            DungeonStatusLabel:Set("Status: Clicking Solo 🎮")
+                            ClickDungeonButton("Solo")
                             task.wait(0.5)
-                            local joinBtn = FindButtonByName("Join")
-                            if joinBtn then ClickButton(joinBtn) end
-                            local enterBtn = FindButtonByName("Enter")
-                            if enterBtn then ClickButton(enterBtn) end
-                            local confirmBtn = FindButtonByName("Confirm")
-                            if confirmBtn then ClickButton(confirmBtn) end
+                            
+                            -- Step 5: Click Start in group menu
+                            DungeonStatusLabel:Set("Status: Starting... ▶️")
+                            ClickDungeonButton("Start")
+                            task.wait(0.5)
+                            
+                            -- Step 6: Click Start Dungeon button
+                            local startBtn = FindStartDungeonButton()
+                            if startBtn then
+                                ClickButton(startBtn)
+                            end
+                            task.wait(1)
+                        else
+                            DungeonStatusLabel:Set("Status: No Portal ❌")
                         end
-                    end 
+                    elseif IsInDungeon() then
+                        DungeonStatusLabel:Set("Status: In Dungeon ✅")
+                    end
                     task.wait(1) 
                 end 
             end) 
@@ -688,36 +777,51 @@ DungeonTab:AddToggle({
             spawn(function() 
                 while AutoFullDungeon do 
                     if not IsAlive() then 
+                        DungeonStatusLabel:Set("Status: Dead ☠️")
                         task.wait(1) 
                         continue 
                     end
                     
                     if IsInDungeon() then
-                        DungeonStatusLabel:Set("Status: Killing 🔥")
-                        local enemy = GetClosestDungeonEnemy()
-                        if enemy and enemy.Root then
-                            TeleportToEnemy(enemy.Root.CFrame)
+                        -- Inside dungeon - kill enemies
+                        local enemies = GetDungeonEnemies()
+                        if #enemies > 0 then
+                            DungeonStatusLabel:Set("Status: Killing 🔥 (" .. #enemies .. " left)")
+                            local enemy = GetClosestDungeonEnemy()
+                            if enemy and enemy.Root then
+                                TeleportToEnemy(enemy.Root.CFrame)
+                            end
+                        else
+                            DungeonStatusLabel:Set("Status: Dungeon Clear ✅")
                         end
                     else
-                        DungeonStatusLabel:Set("Status: Finding Portal 🚪")
+                        -- Outside dungeon - join portal
                         local portal = GetPortalPart()
                         
                         if portal then
                             DungeonStatusLabel:Set("Status: Joining Portal 🚪")
                             TeleportToEnemy(portal.CFrame)
                             task.wait(0.5)
-                            TriggerPortalPrompt()
+                            
+                            TouchPortal()
+                            task.wait(0.8)
+                            
+                            SelectDifficulty(DungeonDifficulty)
+                            task.wait(0.3)
+                            
+                            ClickDungeonButton("Solo")
                             task.wait(0.5)
-                            local buttons = {"Join", "Enter", "Confirm", "Start", "Solo", "Easy", "Normal", "Hard"}
-                            for _, btnName in pairs(buttons) do
-                                local btn = FindButtonByName(btnName)
-                                if btn then 
-                                    ClickButton(btn) 
-                                    task.wait(0.3)
-                                end
+                            
+                            ClickDungeonButton("Start")
+                            task.wait(0.5)
+                            
+                            local startBtn = FindStartDungeonButton()
+                            if startBtn then
+                                ClickButton(startBtn)
                             end
+                            task.wait(1)
                         else
-                            DungeonStatusLabel:Set("Status: No Portal Found ❌")
+                            DungeonStatusLabel:Set("Status: No Portal ❌")
                         end
                     end
                     
@@ -734,12 +838,13 @@ DungeonTab:AddToggle({Name = "Dungeon Kill Aura", Default = false, Callback = fu
 
 DungeonTab:AddSection({Name = "🎮 Dungeon Settings"})
 DungeonTab:AddDropdown({Name = "Difficulty", Default = Config.DungeonDifficulty, Options = {"Easy", "Normal", "Hard"}, Callback = function(Value) DungeonDifficulty = Value Config.DungeonDifficulty = Value end})
-DungeonTab:AddToggle({Name = "Auto Start Dungeon", Default = Config.AutoDungeonStart, Callback = function(Value) AutoDungeonStart = Value Config.AutoDungeonStart = Value if Value then spawn(function() while AutoDungeonStart do if IsAlive() then local startBtn = FindButtonByName("Start") if startBtn then ClickButton(startBtn) end end task.wait(1) end end) end end})
+DungeonTab:AddToggle({Name = "Auto Start Dungeon", Default = Config.AutoDungeonStart, Callback = function(Value) AutoDungeonStart = Value Config.AutoDungeonStart = Value if Value then spawn(function() while AutoDungeonStart do if IsAlive() then local startBtn = FindStartDungeonButton() if startBtn then ClickButton(startBtn) end ClickDungeonButton("Start") end task.wait(1) end end) end end})
 DungeonTab:AddToggle({Name = "Auto Collect Items", Default = Config.AutoDungeonCollect, Callback = function(Value) AutoDungeonCollect = Value Config.AutoDungeonCollect = Value if Value then spawn(function() while AutoDungeonCollect do if IsAlive() and IsInDungeon() then local instanced = Workspace:FindFirstChild("Instanced") if instanced then for _, item in pairs(instanced:GetDescendants()) do if item:IsA("BasePart") and (item.Name:lower():find("item") or item.Name:lower():find("drop") or item.Name:lower():find("loot") or item.Name:lower():find("chest")) then TeleportToEnemy(item.CFrame) task.wait(0.3) end end end end task.wait(0.5) end end) end end})
 
 DungeonTab:AddSection({Name = "🔧 Manual"})
 DungeonTab:AddButton({Name = "TP to Portal", Callback = function() local portal = GetPortalPart() if portal then TeleportToEnemy(portal.CFrame) OrionLib:MakeNotification({Name = "TP", Content = "Teleported to Portal!", Time = 2}) else OrionLib:MakeNotification({Name = "Error", Content = "No portal found!", Time = 2}) end end})
-DungeonTab:AddButton({Name = "Join Portal", Callback = function() local success = JoinPortal() if success then OrionLib:MakeNotification({Name = "Portal", Content = "Joining portal...", Time = 2}) else OrionLib:MakeNotification({Name = "Error", Content = "No portal found!", Time = 2}) end end})
+DungeonTab:AddButton({Name = "Touch Portal", Callback = function() TouchPortal() OrionLib:MakeNotification({Name = "Portal", Content = "Touching portal...", Time = 2}) end})
+DungeonTab:AddButton({Name = "Join Solo", Callback = function() JoinDungeonSolo() OrionLib:MakeNotification({Name = "Dungeon", Content = "Joining solo...", Time = 2}) end})
 DungeonTab:AddButton({Name = "TP to Closest Enemy", Callback = function() local enemy = GetClosestDungeonEnemy() if enemy and enemy.Root then TeleportToEnemy(enemy.Root.CFrame) OrionLib:MakeNotification({Name = "TP", Content = "Teleported to " .. enemy.Name, Time = 2}) else OrionLib:MakeNotification({Name = "Error", Content = "No enemy found!", Time = 2}) end end})
 DungeonTab:AddButton({Name = "Count Enemies", Callback = function() local enemies = GetDungeonEnemies() OrionLib:MakeNotification({Name = "Enemies", Content = "Found " .. #enemies .. " enemies!", Time = 3}) end})
 -- ═══════════════════════════════════════════════════════════════════════
