@@ -1,8 +1,7 @@
 --[[
     ╔══════════════════════════════════════════════════╗
     ║  ARISE RAGNAROK - ALL-IN-ONE AUTOMATION          ║
-    ║  Features: Farm, Quest, Dungeon, Shadows, ESP    ║
-    ║  + FAST ATTACK                                   ║
+    ║  FIXED VERSION - Multiple OrionLib URLs          ║
     ╚══════════════════════════════════════════════════╝
 --]]
 
@@ -13,9 +12,43 @@ getgenv().__ARISE_LOADED = true
 print("🔄 Loading Arise Ragnarok Automation...")
 
 -- ============================================
--- LOAD ORIONLIB
+-- LOAD ORIONLIB (Multiple URLs)
 -- ============================================
-local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
+local OrionLib = nil
+local OrionLoaded = false
+
+local OrionURLs = {
+    "https://raw.githubusercontent.com/jensonhirst/Orion/main/source",
+    "https://raw.githubusercontent.com/shlexware/Orion/main/source",
+    "https://raw.githubusercontent.com/ionlyusegithubformcmods/1-Line-Scripts/main/Orion%20Library",
+    "https://pastefy.app/zSv6F2rR/raw"
+}
+
+print("📥 Loading OrionLib...")
+
+for i, url in pairs(OrionURLs) do
+    print("  Trying URL " .. i .. "...")
+    
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    
+    if success and result then
+        OrionLib = result
+        OrionLoaded = true
+        print("✅ OrionLib loaded from URL " .. i)
+        break
+    else
+        print("  ❌ URL " .. i .. " failed")
+    end
+end
+
+if not OrionLoaded then
+    print("❌ All OrionLib URLs failed!")
+    print("⚠️ Using fallback UI...")
+    
+    -- Will use native UI instead
+end
 
 -- ============================================
 -- SERVICES & SETUP
@@ -24,6 +57,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
@@ -33,80 +67,72 @@ local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 Player.CharacterAdded:Connect(function(char)
     Character = char
     HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+    print("🔄 Character respawned!")
 end)
 
 -- ============================================
 -- GAME REMOTES & FOLDERS
 -- ============================================
-local Remotes = {
-    -- Combat
-    Attack = ReplicatedStorage.Events.Combat.Attack,
-    UseSkill = ReplicatedStorage.Events.Combat.UseSkill,
-    Sprint = ReplicatedStorage.Events.Combat.Sprint,
-    Dash = ReplicatedStorage.Events.Combat.Dash,
-    
-    -- Quest
-    QuestDialog = ReplicatedStorage.Events.Quest.Dialog,
-    QuestRedeem = ReplicatedStorage.Events.Quest.Redeem,
-    QuestSetup = ReplicatedStorage.Events.Quest.Setup,
-    
-    -- Shadow
-    ShadowArise = ReplicatedStorage.Events.Inventory.Shadow.Arise,
-    ShadowEquipBest = ReplicatedStorage.Events.Inventory.Shadow.EquipBest,
-    ShadowEquip = ReplicatedStorage.Events.Inventory.Shadow.Equip,
-    
-    -- Dungeon
-    DungeonStart = ReplicatedStorage.Events.Dungeon.Start,
-    DungeonRankUp = ReplicatedStorage.Events.Dungeon.RankUp,
-    DungeonLobby = ReplicatedStorage.Events.Dungeon.Lobby,
-    
-    -- Inventory
-    InventorySell = ReplicatedStorage.Events.Inventory.Shadow.Sell,
-    InventoryMerge = ReplicatedStorage.Events.Inventory.Merge,
-    ChestOpen = ReplicatedStorage.Events.Inventory.Chest.Open,
-    
-    -- Stats & Misc
-    Stats = ReplicatedStorage.Events.Stats,
-    CodeRedeem = ReplicatedStorage.Events.Code.Redeem,
-}
+local Remotes = {}
+local Folders = {}
 
-local Folders = {
-    Entities = Workspace.EntityFolder,
-    EntityData = Workspace.EntityDataFolder,
-}
+-- Safe remote loading
+local function SafeGetRemote(path)
+    local success, result = pcall(function()
+        local parts = string.split(path, ".")
+        local current = ReplicatedStorage
+        
+        for _, part in pairs(parts) do
+            current = current:FindFirstChild(part)
+            if not current then return nil end
+        end
+        
+        return current
+    end)
+    
+    return success and result or nil
+end
+
+-- Load remotes safely
+print("📡 Loading remotes...")
+
+Remotes.Attack = SafeGetRemote("Events.Combat.Attack")
+Remotes.UseSkill = SafeGetRemote("Events.Combat.UseSkill")
+Remotes.Sprint = SafeGetRemote("Events.Combat.Sprint")
+Remotes.Dash = SafeGetRemote("Events.Combat.Dash")
+Remotes.QuestDialog = SafeGetRemote("Events.Quest.Dialog")
+Remotes.QuestRedeem = SafeGetRemote("Events.Quest.Redeem")
+Remotes.ShadowArise = SafeGetRemote("Events.Inventory.Shadow.Arise")
+Remotes.ShadowEquipBest = SafeGetRemote("Events.Inventory.Shadow.EquipBest")
+Remotes.DungeonStart = SafeGetRemote("Events.Dungeon.Start")
+Remotes.DungeonRankUp = SafeGetRemote("Events.Dungeon.RankUp")
+Remotes.InventorySell = SafeGetRemote("Events.Inventory.Shadow.Sell")
+Remotes.InventoryMerge = SafeGetRemote("Events.Inventory.Merge")
+Remotes.ChestOpen = SafeGetRemote("Events.Inventory.Chest.Open")
+Remotes.CodeRedeem = SafeGetRemote("Events.Code.Redeem")
+Remotes.Stats = SafeGetRemote("Events.Stats")
+
+-- Load folders safely
+Folders.Entities = Workspace:FindFirstChild("EntityFolder")
+Folders.EntityData = Workspace:FindFirstChild("EntityDataFolder")
+
+print("✅ Remotes loaded!")
 
 -- ============================================
 -- SETTINGS
 -- ============================================
 local Settings = {
-    -- Auto Farm
     AutoFarm = false,
     FarmRange = 100,
-    
-    -- Fast Attack
     FastAttack = false,
-    AttackSpeed = 0.1, -- Delay between attacks
-    
-    -- Auto Quest
+    AttackSpeed = 0.1,
     AutoQuest = false,
-    
-    -- Auto Dungeon
     AutoDungeon = false,
-    
-    -- Auto Shadow
     AutoShadow = false,
     AutoEquipBestShadow = false,
-    
-    -- Auto Sell/Merge
     AutoSell = false,
     AutoMerge = false,
-    
-    -- ESP
     ESPEnabled = false,
-    ESPEnemies = true,
-    ESPChests = true,
-    
-    -- Misc
     AutoSprint = false,
     AutoDash = false,
 }
@@ -121,16 +147,16 @@ end
 
 local function Teleport(position)
     if HumanoidRootPart then
-        HumanoidRootPart.CFrame = CFrame.new(position)
+        HumanoidRootPart.CFrame = CFrame.new(position) + Vector3.new(0, 3, 0)
     end
 end
 
-local function Notify(title, text)
-    OrionLib:MakeNotification({
-        Name = title,
-        Content = text,
-        Time = 3
-    })
+local function SafeFireServer(remote, ...)
+    if remote then
+        pcall(function()
+            remote:FireServer(...)
+        end)
+    end
 end
 
 -- ============================================
@@ -138,6 +164,8 @@ end
 -- ============================================
 local function GetEnemies()
     local enemies = {}
+    
+    if not Folders.Entities then return enemies end
     
     for _, entity in pairs(Folders.Entities:GetChildren()) do
         if entity ~= Character and entity:FindFirstChild("Humanoid") then
@@ -159,7 +187,6 @@ local function GetEnemies()
         end
     end
     
-    -- Sort by distance
     table.sort(enemies, function(a, b) return a.Distance < b.Distance end)
     return enemies
 end
@@ -182,18 +209,14 @@ local function StartFastAttack()
         
         local enemy = GetClosestEnemy()
         if enemy then
-            -- Teleport to enemy
             if Settings.AutoFarm then
-                Teleport(enemy.Root.Position + Vector3.new(0, 3, 0))
+                Teleport(enemy.Root.Position)
             end
             
-            -- Spam attack
-            pcall(function()
-                Remotes.Attack:FireServer()
-            end)
-            
-            task.wait(Settings.AttackSpeed)
+            SafeFireServer(Remotes.Attack)
         end
+        
+        task.wait(Settings.AttackSpeed)
     end)
 end
 
@@ -212,14 +235,10 @@ local function AutoFarmLoop()
         local enemy = GetClosestEnemy()
         
         if enemy then
-            -- Teleport to enemy
-            Teleport(enemy.Root.Position + Vector3.new(0, 3, 0))
+            Teleport(enemy.Root.Position)
             
-            -- Attack if fast attack is disabled
             if not Settings.FastAttack then
-                pcall(function()
-                    Remotes.Attack:FireServer()
-                end)
+                SafeFireServer(Remotes.Attack)
             end
             
             task.wait(0.5)
@@ -230,111 +249,86 @@ local function AutoFarmLoop()
 end
 
 -- ============================================
--- AUTO QUEST SYSTEM
+-- AUTO QUEST LOOP
 -- ============================================
 local function AutoQuestLoop()
     while Settings.AutoQuest do
-        pcall(function()
-            -- Try to talk to quest NPCs
-            for _, npc in pairs(Workspace:GetDescendants()) do
-                if npc.Name:find("Quest") or npc.Name:find("NPC") then
-                    if npc:FindFirstChild("ProximityPrompt") then
-                        Teleport(npc.Position)
-                        task.wait(0.5)
-                        
-                        -- Fire quest dialog
-                        Remotes.QuestDialog:FireServer(npc)
-                        task.wait(1)
-                        
-                        -- Try to redeem
-                        Remotes.QuestRedeem:FireServer()
-                        break
-                    end
-                end
-            end
-        end)
-        
+        SafeFireServer(Remotes.QuestRedeem)
         task.wait(5)
     end
 end
 
 -- ============================================
--- AUTO DUNGEON SYSTEM
+-- AUTO DUNGEON LOOP
 -- ============================================
 local function AutoDungeonLoop()
     while Settings.AutoDungeon do
-        pcall(function()
-            -- Start dungeon
-            Remotes.DungeonStart:FireServer()
-            task.wait(2)
-            
-            -- Auto farm in dungeon
-            local enemy = GetClosestEnemy()
-            if enemy then
-                Teleport(enemy.Root.Position)
-                
-                if not Settings.FastAttack then
-                    Remotes.Attack:FireServer()
-                end
-            end
-            
-            -- Try to rank up
-            Remotes.DungeonRankUp:FireServer()
-        end)
+        SafeFireServer(Remotes.DungeonStart)
         
+        local enemy = GetClosestEnemy()
+        if enemy then
+            Teleport(enemy.Root.Position)
+            if not Settings.FastAttack then
+                SafeFireServer(Remotes.Attack)
+            end
+        end
+        
+        SafeFireServer(Remotes.DungeonRankUp)
         task.wait(1)
     end
 end
 
 -- ============================================
--- AUTO SHADOW SYSTEM
+-- AUTO SHADOW LOOP
 -- ============================================
 local function AutoShadowLoop()
     while Settings.AutoShadow do
-        pcall(function()
-            local enemy = GetClosestEnemy()
-            if enemy and enemy.Humanoid.Health <= 0 then
-                -- Try to arise shadow
-                Remotes.ShadowArise:FireServer(enemy.Model)
-            end
-        end)
-        
+        local enemy = GetClosestEnemy()
+        if enemy and enemy.Humanoid.Health <= 0 then
+            SafeFireServer(Remotes.ShadowArise, enemy.Model)
+        end
         task.wait(2)
     end
 end
 
-local function AutoEquipBestShadows()
+local function AutoEquipBestLoop()
     while Settings.AutoEquipBestShadow do
-        pcall(function()
-            Remotes.ShadowEquipBest:FireServer()
-        end)
-        
+        SafeFireServer(Remotes.ShadowEquipBest)
         task.wait(10)
     end
 end
 
 -- ============================================
--- AUTO SELL/MERGE SYSTEM
+-- AUTO SELL/MERGE LOOP
 -- ============================================
 local function AutoSellLoop()
     while Settings.AutoSell do
-        pcall(function()
-            -- Sell common/uncommon items
-            Remotes.InventorySell:FireServer("Common")
-            Remotes.InventorySell:FireServer("Uncommon")
-        end)
-        
+        SafeFireServer(Remotes.InventorySell, "Common")
+        SafeFireServer(Remotes.InventorySell, "Uncommon")
         task.wait(5)
     end
 end
 
 local function AutoMergeLoop()
     while Settings.AutoMerge do
-        pcall(function()
-            Remotes.InventoryMerge:FireServer()
-        end)
-        
+        SafeFireServer(Remotes.InventoryMerge)
         task.wait(10)
+    end
+end
+
+-- ============================================
+-- AUTO MOVEMENT LOOP
+-- ============================================
+local function AutoMovementLoop()
+    while Settings.AutoSprint or Settings.AutoDash do
+        if Settings.AutoSprint then
+            SafeFireServer(Remotes.Sprint, true)
+        end
+        if Settings.AutoDash then
+            SafeFireServer(Remotes.Dash)
+            task.wait(1)
+        end
+        task.wait(0.5)
     end
 end
 
@@ -342,6 +336,13 @@ end
 -- ESP SYSTEM
 -- ============================================
 local ESPObjects = {}
+
+local function ClearESP()
+    for _, esp in pairs(ESPObjects) do
+        if esp then esp:Destroy() end
+    end
+    ESPObjects = {}
+end
 
 local function CreateESP(target, name, color)
     local billboard = Instance.new("BillboardGui")
@@ -359,44 +360,19 @@ local function CreateESP(target, name, color)
     text.Parent = billboard
     
     table.insert(ESPObjects, billboard)
-    return billboard
-end
-
-local function ClearESP()
-    for _, esp in pairs(ESPObjects) do
-        if esp then esp:Destroy() end
-    end
-    ESPObjects = {}
 end
 
 local function UpdateESP()
     ClearESP()
+    if not Settings.ESPEnabled or not Folders.Entities then return end
     
-    if not Settings.ESPEnabled then return end
-    
-    -- ESP Enemies
-    if Settings.ESPEnemies then
-        for _, entity in pairs(Folders.Entities:GetChildren()) do
-            if entity ~= Character and entity:FindFirstChild("HumanoidRootPart") then
-                CreateESP(entity.HumanoidRootPart, entity.Name, Color3.fromRGB(255, 0, 0))
-            end
-        end
-    end
-    
-    -- ESP Chests
-    if Settings.ESPChests then
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj.Name:find("Chest") and obj:IsA("Model") then
-                local root = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
-                if root then
-                    CreateESP(root, "Chest", Color3.fromRGB(255, 215, 0))
-                end
-            end
+    for _, entity in pairs(Folders.Entities:GetChildren()) do
+        if entity ~= Character and entity:FindFirstChild("HumanoidRootPart") then
+            CreateESP(entity.HumanoidRootPart, entity.Name, Color3.fromRGB(255, 0, 0))
         end
     end
 end
 
--- Update ESP every 2 seconds
 task.spawn(function()
     while true do
         UpdateESP()
@@ -405,401 +381,375 @@ task.spawn(function()
 end)
 
 -- ============================================
--- AUTO MOVEMENT
+-- CODE REDEMPTION
 -- ============================================
-local function AutoMovementLoop()
-    while Settings.AutoSprint or Settings.AutoDash do
-        if Settings.AutoSprint then
-            pcall(function()
-                Remotes.Sprint:FireServer(true)
-            end)
-        end
-        
-        if Settings.AutoDash then
-            pcall(function()
-                Remotes.Dash:FireServer()
-            end)
-            task.wait(1)
-        end
-        
-        task.wait(0.5)
-    end
-end
-
--- ============================================
--- AUTO REDEEM CODES
--- ============================================
-local Codes = {
-    "RELEASE",
-    "UPDATE1",
-    "FREEREWARDS",
-    "SHADOW",
-    "ARISE",
-}
+local Codes = {"RELEASE", "UPDATE1", "FREEREWARDS", "SHADOW", "ARISE"}
 
 local function RedeemAllCodes()
     for _, code in pairs(Codes) do
-        pcall(function()
-            Remotes.CodeRedeem:FireServer(code)
-        end)
+        SafeFireServer(Remotes.CodeRedeem, code)
         task.wait(0.5)
     end
-    
-    Notify("Codes", "All codes redeemed!")
+    print("✅ All codes redeemed!")
 end
 
 -- ============================================
--- CREATE UI
+-- CREATE UI (OrionLib or Native)
 -- ============================================
-local Window = OrionLib:MakeWindow({
-    Name = "⚔️ Arise Ragnarok Automation",
-    HidePremium = false,
-    SaveConfig = true,
-    ConfigFolder = "AriseRagnarok",
-    IntroEnabled = true,
-    IntroText = "Arise Ragnarok v1.0"
-})
 
--- ============================================
--- TAB 1: COMBAT
--- ============================================
-local CombatTab = Window:MakeTab({
-    Name = "Combat",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+if OrionLoaded and OrionLib then
+    -- ========================================
+    -- ORIONLIB UI
+    -- ========================================
+    local Window = OrionLib:MakeWindow({
+        Name = "⚔️ Arise Ragnarok",
+        HidePremium = false,
+        SaveConfig = true,
+        ConfigFolder = "AriseRagnarok",
+        IntroEnabled = false
+    })
 
-CombatTab:AddSection({Name = "⚔️ Fast Attack"})
+    -- Combat Tab
+    local CombatTab = Window:MakeTab({Name = "Combat", Icon = "rbxassetid://4483345998"})
+    
+    CombatTab:AddSection({Name = "⚔️ Fast Attack"})
+    
+    CombatTab:AddToggle({
+        Name = "🔥 Fast Attack (Spam)",
+        Default = false,
+        Callback = function(val)
+            Settings.FastAttack = val
+            if val then StartFastAttack() else StopFastAttack() end
+        end
+    })
+    
+    CombatTab:AddSlider({
+        Name = "Attack Speed",
+        Min = 0,
+        Max = 1,
+        Default = 0.1,
+        Increment = 0.05,
+        Callback = function(val) Settings.AttackSpeed = val end
+    })
+    
+    CombatTab:AddSection({Name = "🎯 Auto Farm"})
+    
+    CombatTab:AddToggle({
+        Name = "Auto Farm Enemies",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoFarm = val
+            if val then task.spawn(AutoFarmLoop) end
+        end
+    })
+    
+    CombatTab:AddSlider({
+        Name = "Farm Range",
+        Min = 20,
+        Max = 300,
+        Default = 100,
+        Increment = 10,
+        Callback = function(val) Settings.FarmRange = val end
+    })
+    
+    CombatTab:AddSection({Name = "🏃 Movement"})
+    
+    CombatTab:AddToggle({
+        Name = "Auto Sprint",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoSprint = val
+            if val then task.spawn(AutoMovementLoop) end
+        end
+    })
+    
+    CombatTab:AddToggle({
+        Name = "Auto Dash",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoDash = val
+            if val then task.spawn(AutoMovementLoop) end
+        end
+    })
 
-CombatTab:AddToggle({
-    Name = "🔥 Fast Attack (Spam)",
-    Default = false,
-    Callback = function(val)
-        Settings.FastAttack = val
-        if val then
-            StartFastAttack()
-            Notify("Fast Attack", "Enabled! Spamming attacks...")
-        else
+    -- Quest/Dungeon Tab
+    local QuestTab = Window:MakeTab({Name = "Quest/Dungeon", Icon = "rbxassetid://4483345998"})
+    
+    QuestTab:AddSection({Name = "📜 Quest"})
+    
+    QuestTab:AddToggle({
+        Name = "Auto Complete Quests",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoQuest = val
+            if val then task.spawn(AutoQuestLoop) end
+        end
+    })
+    
+    QuestTab:AddSection({Name = "🏰 Dungeon"})
+    
+    QuestTab:AddToggle({
+        Name = "Auto Dungeon",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoDungeon = val
+            if val then task.spawn(AutoDungeonLoop) end
+        end
+    })
+    
+    QuestTab:AddButton({
+        Name = "Force Start Dungeon",
+        Callback = function() SafeFireServer(Remotes.DungeonStart) end
+    })
+    
+    QuestTab:AddButton({
+        Name = "Rank Up",
+        Callback = function() SafeFireServer(Remotes.DungeonRankUp) end
+    })
+
+    -- Shadow Tab
+    local ShadowTab = Window:MakeTab({Name = "Shadows", Icon = "rbxassetid://4483345998"})
+    
+    ShadowTab:AddSection({Name = "👥 Shadows"})
+    
+    ShadowTab:AddToggle({
+        Name = "Auto Arise Shadows",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoShadow = val
+            if val then task.spawn(AutoShadowLoop) end
+        end
+    })
+    
+    ShadowTab:AddToggle({
+        Name = "Auto Equip Best",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoEquipBestShadow = val
+            if val then task.spawn(AutoEquipBestLoop) end
+        end
+    })
+    
+    ShadowTab:AddButton({
+        Name = "Equip Best Now",
+        Callback = function() SafeFireServer(Remotes.ShadowEquipBest) end
+    })
+
+    -- Inventory Tab
+    local InvTab = Window:MakeTab({Name = "Inventory", Icon = "rbxassetid://4483345998"})
+    
+    InvTab:AddSection({Name = "💰 Auto Sell/Merge"})
+    
+    InvTab:AddToggle({
+        Name = "Auto Sell Junk",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoSell = val
+            if val then task.spawn(AutoSellLoop) end
+        end
+    })
+    
+    InvTab:AddToggle({
+        Name = "Auto Merge",
+        Default = false,
+        Callback = function(val)
+            Settings.AutoMerge = val
+            if val then task.spawn(AutoMergeLoop) end
+        end
+    })
+    
+    InvTab:AddButton({
+        Name = "Open All Chests",
+        Callback = function() SafeFireServer(Remotes.ChestOpen) end
+    })
+
+    -- ESP Tab
+    local ESPTab = Window:MakeTab({Name = "ESP", Icon = "rbxassetid://4483345998"})
+    
+    ESPTab:AddToggle({
+        Name = "Enable ESP",
+        Default = false,
+        Callback = function(val)
+            Settings.ESPEnabled = val
+            if not val then ClearESP() end
+        end
+    })
+
+    -- Misc Tab
+    local MiscTab = Window:MakeTab({Name = "Misc", Icon = "rbxassetid://4483345998"})
+    
+    MiscTab:AddButton({
+        Name = "Redeem All Codes",
+        Callback = RedeemAllCodes
+    })
+    
+    MiscTab:AddButton({
+        Name = "Destroy UI",
+        Callback = function()
+            OrionLib:Destroy()
+            getgenv().__ARISE_LOADED = nil
             StopFastAttack()
-            Notify("Fast Attack", "Disabled")
         end
-    end
-})
+    })
 
-CombatTab:AddSlider({
-    Name = "Attack Speed",
-    Min = 0,
-    Max = 1,
-    Default = 0.1,
-    Increment = 0.05,
-    Callback = function(val)
-        Settings.AttackSpeed = val
-    end
-})
+    OrionLib:Init()
+    
+    OrionLib:MakeNotification({
+        Name = "✅ Loaded!",
+        Content = "Arise Ragnarok Automation Ready!",
+        Time = 5
+    })
 
-CombatTab:AddSection({Name = "🎯 Auto Farm"})
-
-CombatTab:AddToggle({
-    Name = "Auto Farm Enemies",
-    Default = false,
-    Callback = function(val)
-        Settings.AutoFarm = val
-        if val then
-            task.spawn(AutoFarmLoop)
-            Notify("Auto Farm", "Started!")
+else
+    -- ========================================
+    -- NATIVE UI (Fallback)
+    -- ========================================
+    print("⚠️ Using Native UI...")
+    
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "AriseUI"
+    ScreenGui.ResetOnSpawn = false
+    
+    pcall(function()
+        if gethui then
+            ScreenGui.Parent = gethui()
+        elseif syn and syn.protect_gui then
+            syn.protect_gui(ScreenGui)
+            ScreenGui.Parent = game:GetService("CoreGui")
         else
-            Notify("Auto Farm", "Stopped")
+            ScreenGui.Parent = Player:WaitForChild("PlayerGui")
         end
+    end)
+    
+    local Main = Instance.new("Frame")
+    Main.Size = UDim2.new(0, 200, 0, 350)
+    Main.Position = UDim2.new(0, 10, 0.3, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    Main.BorderSizePixel = 0
+    Main.Active = true
+    Main.Draggable = true
+    Main.Parent = ScreenGui
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 10)
+    Corner.Parent = Main
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 35)
+    Title.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    Title.Text = "⚔️ Arise Ragnarok"
+    Title.TextColor3 = Color3.new(1, 1, 1)
+    Title.TextSize = 16
+    Title.Font = Enum.Font.GothamBold
+    Title.Parent = Main
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 10)
+    TitleCorner.Parent = Title
+    
+    local yPos = 45
+    
+    local function CreateToggle(name, callback)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -16, 0, 30)
+        btn.Position = UDim2.new(0, 8, 0, yPos)
+        btn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        btn.Text = "❌ " .. name
+        btn.TextColor3 = Color3.new(1, 1, 1)
+        btn.TextSize = 12
+        btn.Font = Enum.Font.GothamBold
+        btn.Parent = Main
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = btn
+        
+        local enabled = false
+        btn.MouseButton1Click:Connect(function()
+            enabled = not enabled
+            btn.Text = (enabled and "✅ " or "❌ ") .. name
+            btn.BackgroundColor3 = enabled and Color3.fromRGB(50, 150, 50) or Color3.fromRGB(60, 60, 70)
+            callback(enabled)
+        end)
+        
+        yPos = yPos + 35
+        return btn
     end
-})
-
-CombatTab:AddSlider({
-    Name = "Farm Range",
-    Min = 20,
-    Max = 300,
-    Default = 100,
-    Increment = 10,
-    Callback = function(val)
-        Settings.FarmRange = val
-    end
-})
-
-CombatTab:AddSection({Name = "🏃 Movement"})
-
-CombatTab:AddToggle({
-    Name = "Auto Sprint",
-    Default = false,
-    Callback = function(val)
-        Settings.AutoSprint = val
-        if val then
-            task.spawn(AutoMovementLoop)
-        end
-    end
-})
-
-CombatTab:AddToggle({
-    Name = "Auto Dash",
-    Default = false,
-    Callback = function(val)
-        Settings.AutoDash = val
-        if val then
-            task.spawn(AutoMovementLoop)
-        end
-    end
-})
-
--- ============================================
--- TAB 2: QUEST & DUNGEON
--- ============================================
-local QuestTab = Window:MakeTab({
-    Name = "Quest/Dungeon",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-QuestTab:AddSection({Name = "📜 Auto Quest"})
-
-QuestTab:AddToggle({
-    Name = "Auto Complete Quests",
-    Default = false,
-    Callback = function(val)
+    
+    CreateToggle("Fast Attack", function(val)
+        Settings.FastAttack = val
+        if val then StartFastAttack() else StopFastAttack() end
+    end)
+    
+    CreateToggle("Auto Farm", function(val)
+        Settings.AutoFarm = val
+        if val then task.spawn(AutoFarmLoop) end
+    end)
+    
+    CreateToggle("Auto Quest", function(val)
         Settings.AutoQuest = val
-        if val then
-            task.spawn(AutoQuestLoop)
-            Notify("Auto Quest", "Started!")
-        end
-    end
-})
-
-QuestTab:AddSection({Name = "🏰 Auto Dungeon"})
-
-QuestTab:AddToggle({
-    Name = "Auto Start & Farm Dungeon",
-    Default = false,
-    Callback = function(val)
+        if val then task.spawn(AutoQuestLoop) end
+    end)
+    
+    CreateToggle("Auto Dungeon", function(val)
         Settings.AutoDungeon = val
-        if val then
-            task.spawn(AutoDungeonLoop)
-            Notify("Auto Dungeon", "Started!")
-        end
-    end
-})
-
-QuestTab:AddButton({
-    Name = "Force Start Dungeon",
-    Callback = function()
-        pcall(function()
-            Remotes.DungeonStart:FireServer()
-            Notify("Dungeon", "Started!")
-        end)
-    end
-})
-
-QuestTab:AddButton({
-    Name = "Rank Up",
-    Callback = function()
-        pcall(function()
-            Remotes.DungeonRankUp:FireServer()
-            Notify("Dungeon", "Rank up attempted!")
-        end)
-    end
-})
-
--- ============================================
--- TAB 3: SHADOWS
--- ============================================
-local ShadowTab = Window:MakeTab({
-    Name = "Shadows",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-ShadowTab:AddSection({Name = "👥 Auto Shadow"})
-
-ShadowTab:AddToggle({
-    Name = "Auto Arise Shadows",
-    Default = false,
-    Callback = function(val)
+        if val then task.spawn(AutoDungeonLoop) end
+    end)
+    
+    CreateToggle("Auto Shadow", function(val)
         Settings.AutoShadow = val
-        if val then
-            task.spawn(AutoShadowLoop)
-            Notify("Auto Shadow", "Will auto-arise defeated enemies!")
-        end
-    end
-})
-
-ShadowTab:AddToggle({
-    Name = "Auto Equip Best Shadows",
-    Default = false,
-    Callback = function(val)
+        if val then task.spawn(AutoShadowLoop) end
+    end)
+    
+    CreateToggle("Auto Equip Best", function(val)
         Settings.AutoEquipBestShadow = val
-        if val then
-            task.spawn(AutoEquipBestShadows)
-            Notify("Auto Equip", "Auto equipping best shadows!")
-        end
-    end
-})
-
-ShadowTab:AddButton({
-    Name = "Equip Best Now",
-    Callback = function()
-        pcall(function()
-            Remotes.ShadowEquipBest:FireServer()
-            Notify("Shadows", "Equipped best shadows!")
-        end)
-    end
-})
-
--- ============================================
--- TAB 4: INVENTORY
--- ============================================
-local InvTab = Window:MakeTab({
-    Name = "Inventory",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-InvTab:AddSection({Name = "💰 Auto Sell/Merge"})
-
-InvTab:AddToggle({
-    Name = "Auto Sell Common/Uncommon",
-    Default = false,
-    Callback = function(val)
-        Settings.AutoSell = val
-        if val then
-            task.spawn(AutoSellLoop)
-            Notify("Auto Sell", "Selling junk items!")
-        end
-    end
-})
-
-InvTab:AddToggle({
-    Name = "Auto Merge Items",
-    Default = false,
-    Callback = function(val)
-        Settings.AutoMerge = val
-        if val then
-            task.spawn(AutoMergeLoop)
-            Notify("Auto Merge", "Auto merging items!")
-        end
-    end
-})
-
-InvTab:AddButton({
-    Name = "Open All Chests",
-    Callback = function()
-        pcall(function()
-            Remotes.ChestOpen:FireServer()
-            Notify("Chests", "Opened all chests!")
-        end)
-    end
-})
-
--- ============================================
--- TAB 5: ESP & VISUALS
--- ============================================
-local ESPTab = Window:MakeTab({
-    Name = "ESP",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-ESPTab:AddSection({Name = "👁️ ESP Settings"})
-
-ESPTab:AddToggle({
-    Name = "Enable ESP",
-    Default = false,
-    Callback = function(val)
+        if val then task.spawn(AutoEquipBestLoop) end
+    end)
+    
+    CreateToggle("ESP", function(val)
         Settings.ESPEnabled = val
-        if not val then
-            ClearESP()
-        end
-    end
-})
-
-ESPTab:AddToggle({
-    Name = "ESP Enemies",
-    Default = true,
-    Callback = function(val)
-        Settings.ESPEnemies = val
-    end
-})
-
-ESPTab:AddToggle({
-    Name = "ESP Chests",
-    Default = true,
-    Callback = function(val)
-        Settings.ESPChests = val
-    end
-})
-
--- ============================================
--- TAB 6: MISC
--- ============================================
-local MiscTab = Window:MakeTab({
-    Name = "Misc",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-MiscTab:AddSection({Name = "🎁 Codes"})
-
-MiscTab:AddButton({
-    Name = "Redeem All Codes",
-    Callback = function()
-        RedeemAllCodes()
-    end
-})
-
-MiscTab:AddSection({Name = "📊 Stats"})
-
-MiscTab:AddButton({
-    Name = "Max Stats (Strength)",
-    Callback = function()
-        pcall(function()
-            Remotes.Stats:FireServer("Strength", 999)
-            Notify("Stats", "Upgraded Strength!")
-        end)
-    end
-})
-
-MiscTab:AddButton({
-    Name = "Max Stats (Agility)",
-    Callback = function()
-        pcall(function()
-            Remotes.Stats:FireServer("Agility", 999)
-            Notify("Stats", "Upgraded Agility!")
-        end)
-    end
-})
-
-MiscTab:AddSection({Name = "⚙️ Settings"})
-
-MiscTab:AddButton({
-    Name = "Destroy UI",
-    Callback = function()
-        OrionLib:Destroy()
+        if not val then ClearESP() end
+    end)
+    
+    CreateToggle("Auto Sprint", function(val)
+        Settings.AutoSprint = val
+        if val then task.spawn(AutoMovementLoop) end
+    end)
+    
+    -- Close button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(1, -16, 0, 30)
+    closeBtn.Position = UDim2.new(0, 8, 0, yPos)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    closeBtn.Text = "❌ Close"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.TextSize = 12
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = Main
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeBtn
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
         getgenv().__ARISE_LOADED = nil
         StopFastAttack()
-    end
-})
+    end)
+end
 
 -- ============================================
--- INIT
+-- DONE!
 -- ============================================
-OrionLib:Init()
-
 print("")
 print("╔════════════════════════════════════════════════╗")
 print("║  ✅ ARISE RAGNAROK AUTOMATION LOADED!          ║")
 print("╠════════════════════════════════════════════════╣")
-print("║  Combat Tab: Fast Attack + Auto Farm          ║")
-print("║  Quest Tab: Auto Quest + Dungeon              ║")
-print("║  Shadows Tab: Auto Arise + Equip              ║")
-print("║  Inventory Tab: Auto Sell/Merge               ║")
-print("║  ESP Tab: See enemies & chests                ║")
-print("║  Misc Tab: Codes + Stats                      ║")
+print("║  Features:                                     ║")
+print("║  - Fast Attack                                 ║")
+print("║  - Auto Farm                                   ║")
+print("║  - Auto Quest/Dungeon                          ║")
+print("║  - Auto Shadow                                 ║")
+print("║  - ESP                                         ║")
 print("╚════════════════════════════════════════════════╝")
 print("")
-
-Notify("✅ Loaded!", "Arise Ragnarok Automation Ready!")
