@@ -1,7 +1,6 @@
 --[[
-    GAME EXPLORER - ORIONLIB VERSION
-    With multiple URL fallbacks
-    Saves all console output to text file
+    GAME EXPLORER - OPTIMIZED (NO FREEZE)
+    Added task.wait() to prevent freezing
 ]]
 
 -- Anti-reload
@@ -11,7 +10,7 @@ getgenv().__EXPLORER = true
 print("🔄 Loading Game Explorer...")
 
 -- ============================================
--- LOAD ORIONLIB (Multiple URLs)
+-- LOAD ORIONLIB
 -- ============================================
 local OrionLib = nil
 local OrionLoaded = false
@@ -19,13 +18,10 @@ local OrionLoaded = false
 local OrionURLs = {
     "https://raw.githubusercontent.com/shlexware/Orion/main/source",
     "https://raw.githubusercontent.com/jensonhirst/Orion/main/source",
-    "https://raw.githubusercontent.com/ionlyusegithubformcmods/1-Line-Scripts/main/Orion%20Library",
-    "https://pastefy.app/zSv6F2rR/raw"
+    "https://raw.githubusercontent.com/ionlyusegithubformcmods/1-Line-Scripts/main/Orion%20Library"
 }
 
 for i, url in pairs(OrionURLs) do
-    print("📥 Trying OrionLib URL " .. i .. "...")
-    
     local success, result = pcall(function()
         return loadstring(game:HttpGet(url))()
     end)
@@ -35,21 +31,11 @@ for i, url in pairs(OrionURLs) do
         OrionLoaded = true
         print("✅ OrionLib loaded from URL " .. i)
         break
-    else
-        print("❌ URL " .. i .. " failed: " .. tostring(result))
     end
 end
 
 if not OrionLoaded then
-    print("❌ All OrionLib URLs failed!")
-    print("❌ Cannot continue without OrionLib")
-    
-    game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "❌ Error",
-        Text = "OrionLib failed to load from all URLs",
-        Duration = 10
-    })
-    
+    print("❌ OrionLib failed!")
     getgenv().__EXPLORER = nil
     return
 end
@@ -68,12 +54,20 @@ local StarterPack = game:GetService("StarterPack")
 
 local Player = Players.LocalPlayer
 
-print("✅ Services loaded")
+-- ============================================
+-- SETTINGS
+-- ============================================
+local Settings = {
+    MaxObjects = 500,  -- Limit objects to prevent freeze
+    YieldEvery = 50,   -- Yield every X objects
+    ScanDelay = 0.01   -- Small delay to prevent freeze
+}
 
 -- ============================================
 -- OUTPUT STORAGE
 -- ============================================
 local OutputText = ""
+local IsScanning = false
 
 local function Log(text)
     text = text or ""
@@ -93,7 +87,7 @@ local function LogHeader(title)
 end
 
 -- ============================================
--- SCAN FUNCTIONS
+-- OPTIMIZED SCAN FUNCTIONS (NO FREEZE)
 -- ============================================
 
 local function ScanGameInfo()
@@ -103,12 +97,10 @@ local function ScanGameInfo()
         local info = MarketplaceService:GetProductInfo(game.PlaceId)
         Log("  Game Name: " .. (info.Name or "Unknown"))
         Log("  Creator: " .. (info.Creator.Name or "Unknown"))
-        Log("  Description: " .. string.sub(info.Description or "", 1, 100))
     end)
     
     Log("  Place ID: " .. game.PlaceId)
     Log("  Game ID: " .. game.GameId)
-    Log("  Job ID: " .. game.JobId)
     Log("  Player Count: " .. #Players:GetPlayers())
     Log("  Your Name: " .. Player.Name)
     
@@ -116,35 +108,36 @@ local function ScanGameInfo()
 end
 
 local function ScanRemotes()
-    LogHeader("📡 ALL REMOTES (RemoteEvents & RemoteFunctions)")
+    LogHeader("📡 ALL REMOTES")
     
     local count = 0
-    local services = {ReplicatedStorage, ReplicatedFirst, Workspace, Lighting}
+    local scanned = 0
     
-    for _, service in pairs(services) do
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        scanned = scanned + 1
+        
+        -- Yield to prevent freeze
+        if scanned % Settings.YieldEvery == 0 then
+            task.wait(Settings.ScanDelay)
+        end
+        
+        -- Limit max objects
+        if count >= Settings.MaxObjects then
+            Log("  ⚠️ Limit reached (" .. Settings.MaxObjects .. ")")
+            break
+        end
+        
         pcall(function()
-            for _, obj in pairs(service:GetDescendants()) do
-                if obj:IsA("RemoteEvent") then
-                    count = count + 1
-                    Log("  [RemoteEvent] " .. obj.Name)
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                elseif obj:IsA("RemoteFunction") then
-                    count = count + 1
-                    Log("  [RemoteFunction] " .. obj.Name)
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                elseif obj:IsA("BindableEvent") then
-                    count = count + 1
-                    Log("  [BindableEvent] " .. obj.Name)
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                elseif obj:IsA("BindableFunction") then
-                    count = count + 1
-                    Log("  [BindableFunction] " .. obj.Name)
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                end
+            if obj:IsA("RemoteEvent") then
+                count = count + 1
+                Log("  [RemoteEvent] " .. obj.Name)
+                Log("    Path: " .. obj:GetFullName())
+                Log("")
+            elseif obj:IsA("RemoteFunction") then
+                count = count + 1
+                Log("  [RemoteFunction] " .. obj.Name)
+                Log("    Path: " .. obj:GetFullName())
+                Log("")
             end
         end)
     end
@@ -154,18 +147,30 @@ local function ScanRemotes()
 end
 
 local function ScanPrompts()
-    LogHeader("🎯 ALL PROXIMITY PROMPTS (Collectibles)")
+    LogHeader("🎯 PROXIMITY PROMPTS")
     
     local count = 0
+    local scanned = 0
     
     for _, obj in pairs(Workspace:GetDescendants()) do
+        scanned = scanned + 1
+        
+        -- Yield to prevent freeze
+        if scanned % Settings.YieldEvery == 0 then
+            task.wait(Settings.ScanDelay)
+        end
+        
+        -- Limit
+        if count >= Settings.MaxObjects then
+            Log("  ⚠️ Limit reached")
+            break
+        end
+        
         pcall(function()
             if obj:IsA("ProximityPrompt") then
                 count = count + 1
                 Log("  " .. count .. ". " .. obj.Parent.Name)
                 Log("    Action: " .. (obj.ActionText ~= "" and obj.ActionText or "Interact"))
-                Log("    Object: " .. (obj.ObjectText ~= "" and obj.ObjectText or "None"))
-                Log("    Hold: " .. obj.HoldDuration .. " seconds")
                 Log("    Path: " .. obj:GetFullName())
                 Log("")
             end
@@ -177,22 +182,31 @@ local function ScanPrompts()
 end
 
 local function ScanNPCs()
-    LogHeader("👤 ALL NPCs & HUMANOIDS")
+    LogHeader("👤 NPCs & HUMANOIDS")
     
     local count = 0
+    local scanned = 0
     
     for _, obj in pairs(Workspace:GetDescendants()) do
+        scanned = scanned + 1
+        
+        -- Yield to prevent freeze
+        if scanned % Settings.YieldEvery == 0 then
+            task.wait(Settings.ScanDelay)
+        end
+        
+        -- Limit
+        if count >= Settings.MaxObjects then
+            Log("  ⚠️ Limit reached")
+            break
+        end
+        
         pcall(function()
             if obj:IsA("Humanoid") and obj.Parent ~= Player.Character then
                 count = count + 1
-                local model = obj.Parent
-                local hrp = model:FindFirstChild("HumanoidRootPart")
-                
-                Log("  " .. count .. ". " .. model.Name)
-                Log("    Health: " .. math.floor(obj.Health) .. "/" .. math.floor(obj.MaxHealth))
-                Log("    WalkSpeed: " .. obj.WalkSpeed)
-                Log("    Has Root: " .. (hrp and "Yes" or "No"))
-                Log("    Path: " .. model:GetFullName())
+                Log("  " .. count .. ". " .. obj.Parent.Name)
+                Log("    HP: " .. math.floor(obj.Health) .. "/" .. math.floor(obj.MaxHealth))
+                Log("    Path: " .. obj.Parent:GetFullName())
                 Log("")
             end
         end)
@@ -203,24 +217,29 @@ local function ScanNPCs()
 end
 
 local function ScanItems()
-    LogHeader("💎 ALL COLLECTIBLE ITEMS")
+    LogHeader("💎 COLLECTIBLE ITEMS")
     
     local count = 0
+    local scanned = 0
     
     for _, obj in pairs(Workspace:GetDescendants()) do
+        scanned = scanned + 1
+        
+        -- Yield to prevent freeze
+        if scanned % Settings.YieldEvery == 0 then
+            task.wait(Settings.ScanDelay)
+        end
+        
+        -- Limit
+        if count >= Settings.MaxObjects then
+            Log("  ⚠️ Limit reached")
+            break
+        end
+        
         pcall(function()
-            local hasPrompt = obj:FindFirstChild("ProximityPrompt")
-            local hasClick = obj:FindFirstChild("ClickDetector")
-            local hasTouch = obj:FindFirstChild("TouchInterest")
-            
-            if obj:IsA("BasePart") and (hasPrompt or hasClick or hasTouch) then
+            if obj:IsA("BasePart") and obj:FindFirstChild("ProximityPrompt") then
                 count = count + 1
-                local interactType = hasPrompt and "ProximityPrompt" or (hasClick and "ClickDetector" or "TouchInterest")
-                
                 Log("  " .. count .. ". " .. obj.Name)
-                Log("    Class: " .. obj.ClassName)
-                Log("    Interact: " .. interactType)
-                Log("    Position: " .. tostring(obj.Position))
                 Log("    Path: " .. obj:GetFullName())
                 Log("")
             end
@@ -232,75 +251,57 @@ local function ScanItems()
 end
 
 local function ScanTools()
-    LogHeader("🔧 ALL TOOLS & WEAPONS")
+    LogHeader("🔧 TOOLS & WEAPONS")
     
     local count = 0
     
-    -- StarterPack
+    -- StarterPack (small, no yield needed)
     pcall(function()
         for _, obj in pairs(StarterPack:GetChildren()) do
             if obj:IsA("Tool") then
                 count = count + 1
-                Log("  " .. count .. ". " .. obj.Name)
-                Log("    Location: StarterPack")
-                Log("    Path: " .. obj:GetFullName())
-                Log("")
+                Log("  " .. count .. ". " .. obj.Name .. " (StarterPack)")
             end
         end
     end)
     
-    -- Backpack
+    -- Backpack (small, no yield needed)
     pcall(function()
         for _, obj in pairs(Player.Backpack:GetChildren()) do
             if obj:IsA("Tool") then
                 count = count + 1
-                Log("  " .. count .. ". " .. obj.Name)
-                Log("    Location: Backpack")
-                Log("    Path: " .. obj:GetFullName())
-                Log("")
+                Log("  " .. count .. ". " .. obj.Name .. " (Backpack)")
             end
         end
     end)
-    
-    -- Workspace
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        pcall(function()
-            if obj:IsA("Tool") then
-                count = count + 1
-                Log("  " .. count .. ". " .. obj.Name)
-                Log("    Location: Workspace")
-                Log("    Path: " .. obj:GetFullName())
-                Log("")
-            end
-        end)
-    end
     
     Log("  TOTAL TOOLS: " .. count)
     return count
 end
 
 local function ScanFolders()
-    LogHeader("📁 ALL FOLDERS")
+    LogHeader("📁 FOLDERS")
     
     local count = 0
-    local services = {
-        {Name = "Workspace", Service = Workspace},
-        {Name = "ReplicatedStorage", Service = ReplicatedStorage},
-        {Name = "ReplicatedFirst", Service = ReplicatedFirst},
-        {Name = "Lighting", Service = Lighting}
-    }
     
-    for _, data in pairs(services) do
+    -- Workspace folders (top level only - fast)
+    for _, obj in pairs(Workspace:GetChildren()) do
+        task.wait()
         pcall(function()
-            for _, obj in pairs(data.Service:GetDescendants()) do
-                if obj:IsA("Folder") then
-                    count = count + 1
-                    Log("  " .. count .. ". " .. obj.Name)
-                    Log("    Service: " .. data.Name)
-                    Log("    Children: " .. #obj:GetChildren())
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                end
+            if obj:IsA("Folder") then
+                count = count + 1
+                Log("  " .. count .. ". [Workspace] " .. obj.Name .. " (" .. #obj:GetChildren() .. " children)")
+            end
+        end)
+    end
+    
+    -- ReplicatedStorage folders (top level only - fast)
+    for _, obj in pairs(ReplicatedStorage:GetChildren()) do
+        task.wait()
+        pcall(function()
+            if obj:IsA("Folder") then
+                count = count + 1
+                Log("  " .. count .. ". [ReplicatedStorage] " .. obj.Name .. " (" .. #obj:GetChildren() .. " children)")
             end
         end)
     end
@@ -310,22 +311,20 @@ local function ScanFolders()
 end
 
 local function ScanValues()
-    LogHeader("📊 ALL VALUES (IntValue, StringValue, etc.)")
+    LogHeader("📊 YOUR VALUES (Player Only)")
     
     local count = 0
-    local services = {ReplicatedStorage, Player, Workspace, Lighting}
     
-    for _, service in pairs(services) do
+    -- Only scan Player - much faster!
+    for _, obj in pairs(Player:GetDescendants()) do
+        task.wait()
         pcall(function()
-            for _, obj in pairs(service:GetDescendants()) do
-                if obj:IsA("IntValue") or obj:IsA("StringValue") or obj:IsA("BoolValue") or obj:IsA("NumberValue") then
-                    count = count + 1
-                    Log("  " .. count .. ". " .. obj.Name)
-                    Log("    Type: " .. obj.ClassName)
-                    Log("    Value: " .. tostring(obj.Value))
-                    Log("    Path: " .. obj:GetFullName())
-                    Log("")
-                end
+            if obj:IsA("IntValue") or obj:IsA("StringValue") or obj:IsA("BoolValue") or obj:IsA("NumberValue") then
+                count = count + 1
+                Log("  " .. count .. ". " .. obj.Name .. " = " .. tostring(obj.Value))
+                Log("    Type: " .. obj.ClassName)
+                Log("    Path: " .. obj:GetFullName())
+                Log("")
             end
         end)
     end
@@ -340,26 +339,20 @@ local function ScanPlayers()
     local count = 0
     
     for i, plr in pairs(Players:GetPlayers()) do
+        task.wait()
         pcall(function()
             count = count + 1
             Log("  " .. i .. ". " .. plr.Name .. (plr == Player and " (YOU)" or ""))
-            Log("    Display: " .. plr.DisplayName)
             Log("    UserId: " .. plr.UserId)
             Log("    Team: " .. (plr.Team and plr.Team.Name or "None"))
             
-            -- Player values
-            for _, obj in pairs(plr:GetDescendants()) do
-                if obj:IsA("IntValue") or obj:IsA("StringValue") or obj:IsA("NumberValue") then
-                    Log("    [" .. obj.ClassName .. "] " .. obj.Name .. " = " .. tostring(obj.Value))
+            -- Only show leaderstats (fast)
+            local leaderstats = plr:FindFirstChild("leaderstats")
+            if leaderstats then
+                for _, stat in pairs(leaderstats:GetChildren()) do
+                    Log("    " .. stat.Name .. " = " .. tostring(stat.Value))
                 end
             end
-            
-            -- Player attributes
-            local attrs = plr:GetAttributes()
-            for name, val in pairs(attrs) do
-                Log("    [Attribute] " .. name .. " = " .. tostring(val))
-            end
-            
             Log("")
         end)
     end
@@ -368,64 +361,32 @@ local function ScanPlayers()
     return count
 end
 
-local function ScanAttributes()
-    LogHeader("🏷️ ALL ATTRIBUTES")
-    
-    local count = 0
-    
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        pcall(function()
-            local attrs = obj:GetAttributes()
-            if next(attrs) then
-                count = count + 1
-                Log("  " .. count .. ". " .. obj.Name)
-                Log("    Path: " .. obj:GetFullName())
-                for name, val in pairs(attrs) do
-                    Log("    " .. name .. " = " .. tostring(val))
-                end
-                Log("")
-            end
-        end)
-    end
-    
-    Log("  TOTAL OBJECTS WITH ATTRIBUTES: " .. count)
-    return count
-end
-
 local function ScanWorkspaceStructure()
-    LogHeader("🌍 WORKSPACE STRUCTURE (Top Level)")
+    LogHeader("🌍 WORKSPACE STRUCTURE")
     
     local count = 0
     
     for _, obj in pairs(Workspace:GetChildren()) do
+        task.wait()
         count = count + 1
-        local childCount = 0
-        pcall(function() childCount = #obj:GetDescendants() end)
-        
-        Log("  " .. count .. ". " .. obj.Name)
-        Log("    Class: " .. obj.ClassName)
-        Log("    Descendants: " .. childCount)
-        Log("")
+        local childCount = #obj:GetChildren()
+        Log("  " .. count .. ". " .. obj.Name .. " [" .. obj.ClassName .. "] (" .. childCount .. " children)")
     end
     
-    Log("  TOTAL TOP-LEVEL OBJECTS: " .. count)
+    Log("  TOTAL: " .. count)
     return count
 end
 
 local function ScanReplicatedStructure()
-    LogHeader("📦 REPLICATED STORAGE STRUCTURE")
+    LogHeader("📦 REPLICATED STORAGE")
     
     local count = 0
     
     for _, obj in pairs(ReplicatedStorage:GetChildren()) do
+        task.wait()
         count = count + 1
-        local childCount = 0
-        pcall(function() childCount = #obj:GetDescendants() end)
-        
-        Log("  " .. count .. ". " .. obj.Name)
-        Log("    Class: " .. obj.ClassName)
-        Log("    Descendants: " .. childCount)
-        Log("")
+        local childCount = #obj:GetChildren()
+        Log("  " .. count .. ". " .. obj.Name .. " [" .. obj.ClassName .. "] (" .. childCount .. " children)")
     end
     
     Log("  TOTAL: " .. count)
@@ -433,37 +394,140 @@ local function ScanReplicatedStructure()
 end
 
 -- ============================================
--- FULL SCAN
+-- FULL SCAN (OPTIMIZED)
 -- ============================================
 local function FullScan()
+    if IsScanning then
+        OrionLib:MakeNotification({
+            Name = "⚠️ Wait",
+            Content = "Already scanning...",
+            Time = 3
+        })
+        return
+    end
+    
+    IsScanning = true
     OutputText = ""
     
     Log("")
     Log("╔═══════════════════════════════════════════════════════╗")
-    Log("║           FULL GAME SCAN - DELTA EXPLORER             ║")
-    Log("║           Scan Time: " .. os.date("%Y-%m-%d %H:%M:%S") .. "            ║")
+    Log("║           FULL GAME SCAN                              ║")
+    Log("║           " .. os.date("%Y-%m-%d %H:%M:%S") .. "                           ║")
     Log("╚═══════════════════════════════════════════════════════╝")
     
     ScanGameInfo()
+    task.wait(0.1)
+    
     ScanWorkspaceStructure()
+    task.wait(0.1)
+    
     ScanReplicatedStructure()
+    task.wait(0.1)
+    
     ScanRemotes()
+    task.wait(0.1)
+    
     ScanPrompts()
+    task.wait(0.1)
+    
     ScanNPCs()
+    task.wait(0.1)
+    
     ScanItems()
+    task.wait(0.1)
+    
     ScanTools()
+    task.wait(0.1)
+    
     ScanFolders()
+    task.wait(0.1)
+    
     ScanValues()
+    task.wait(0.1)
+    
     ScanPlayers()
-    ScanAttributes()
     
     Log("")
     LogLine()
     Log("  ✅ FULL SCAN COMPLETE!")
-    Log("  Total Output Lines: " .. #OutputText:split("\n"))
     LogLine()
     Log("")
     
+    IsScanning = false
+    return OutputText
+end
+
+-- ============================================
+-- QUICK SCAN (FASTEST - NO FREEZE)
+-- ============================================
+local function QuickScan()
+    if IsScanning then return end
+    
+    IsScanning = true
+    OutputText = ""
+    
+    Log("")
+    Log("╔═══════════════════════════════════════════════════════╗")
+    Log("║           QUICK SCAN (Lightweight)                    ║")
+    Log("╚═══════════════════════════════════════════════════════╝")
+    
+    -- Game Info
+    LogHeader("📱 GAME INFO")
+    pcall(function()
+        local info = MarketplaceService:GetProductInfo(game.PlaceId)
+        Log("  Name: " .. (info.Name or "Unknown"))
+    end)
+    Log("  Place ID: " .. game.PlaceId)
+    Log("  Players: " .. #Players:GetPlayers())
+    
+    task.wait(0.1)
+    
+    -- Quick Remote Count
+    LogHeader("📡 REMOTES (Quick Count)")
+    local remoteCount = 0
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            remoteCount = remoteCount + 1
+            if remoteCount <= 10 then
+                Log("  " .. obj.Name)
+            end
+        end
+    end
+    Log("  Total: " .. remoteCount)
+    
+    task.wait(0.1)
+    
+    -- Quick Folder List
+    LogHeader("📁 MAIN FOLDERS")
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Folder") then
+            Log("  [Workspace] " .. obj.Name)
+        end
+    end
+    for _, obj in pairs(ReplicatedStorage:GetChildren()) do
+        if obj:IsA("Folder") then
+            Log("  [ReplicatedStorage] " .. obj.Name)
+        end
+    end
+    
+    task.wait(0.1)
+    
+    -- Your Stats
+    LogHeader("📊 YOUR STATS")
+    local leaderstats = Player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, stat in pairs(leaderstats:GetChildren()) do
+            Log("  " .. stat.Name .. " = " .. tostring(stat.Value))
+        end
+    else
+        Log("  No leaderstats found")
+    end
+    
+    Log("")
+    Log("✅ QUICK SCAN COMPLETE!")
+    Log("")
+    
+    IsScanning = false
     return OutputText
 end
 
@@ -476,25 +540,16 @@ local function SaveToFile()
     end
     
     if OutputText == "" then
-        FullScan()
+        QuickScan()
     end
     
-    local gameName = "Game"
+    local filename = "Scan_" .. game.PlaceId .. ".txt"
+    
     pcall(function()
-        gameName = MarketplaceService:GetProductInfo(game.PlaceId).Name:gsub("[^%w]", "_")
-    end)
-    
-    local filename = "Scan_" .. gameName .. "_" .. game.PlaceId .. ".txt"
-    
-    local success = pcall(function()
         writefile(filename, OutputText)
     end)
     
-    if success then
-        return true, filename
-    else
-        return false, "Failed to write file"
-    end
+    return true, filename
 end
 
 local function CopyToClipboard()
@@ -503,7 +558,7 @@ local function CopyToClipboard()
     end
     
     if OutputText == "" then
-        FullScan()
+        QuickScan()
     end
     
     setclipboard(OutputText)
@@ -511,163 +566,159 @@ local function CopyToClipboard()
 end
 
 -- ============================================
--- CREATE ORIONLIB UI
+-- ORIONLIB UI
 -- ============================================
-print("🎨 Creating OrionLib UI...")
-
 local Window = OrionLib:MakeWindow({
     Name = "🔍 Game Explorer",
     HidePremium = false,
     SaveConfig = false,
-    IntroEnabled = true,
-    IntroText = "Game Explorer v4.0"
+    IntroEnabled = false
 })
 
 -- ============================================
--- TAB 1: SCAN
+-- TAB 1: QUICK ACTIONS
 -- ============================================
-local ScanTab = Window:MakeTab({
-    Name = "Scan",
+local MainTab = Window:MakeTab({
+    Name = "Main",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-ScanTab:AddSection({
-    Name = "Quick Scans"
+MainTab:AddSection({
+    Name = "⚡ Fast Scans (No Freeze)"
 })
 
-ScanTab:AddButton({
-    Name = "📱 Game Info",
+MainTab:AddButton({
+    Name = "⚡ QUICK SCAN (Recommended)",
     Callback = function()
-        OutputText = ""
-        ScanGameInfo()
         OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Game info scanned!",
-            Time = 3
+            Name = "⏳ Scanning...",
+            Content = "Quick scan started",
+            Time = 2
         })
+        
+        task.spawn(function()
+            QuickScan()
+            OrionLib:MakeNotification({
+                Name = "✅ Done!",
+                Content = "Check console (F9)",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "📡 Scan Remotes",
+MainTab:AddButton({
+    Name = "📋 Quick Scan + Copy",
     Callback = function()
-        OutputText = ""
-        local count = ScanRemotes()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " remotes!",
-            Time = 3
-        })
+        task.spawn(function()
+            QuickScan()
+            CopyToClipboard()
+            OrionLib:MakeNotification({
+                Name = "✅ Copied!",
+                Content = "Paste anywhere",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "🎯 Scan Prompts",
+MainTab:AddSection({
+    Name = "📁 Individual Scans"
+})
+
+MainTab:AddButton({
+    Name = "📡 Remotes",
     Callback = function()
-        OutputText = ""
-        local count = ScanPrompts()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " prompts!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanRemotes()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " remotes",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "👤 Scan NPCs",
+MainTab:AddButton({
+    Name = "🎯 Prompts",
     Callback = function()
-        OutputText = ""
-        local count = ScanNPCs()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " NPCs!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanPrompts()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " prompts",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "💎 Scan Items",
+MainTab:AddButton({
+    Name = "👤 NPCs",
     Callback = function()
-        OutputText = ""
-        local count = ScanItems()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " items!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanNPCs()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " NPCs",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "🔧 Scan Tools",
+MainTab:AddButton({
+    Name = "💎 Items",
     Callback = function()
-        OutputText = ""
-        local count = ScanTools()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " tools!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanItems()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " items",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "📁 Scan Folders",
+MainTab:AddButton({
+    Name = "📁 Folders",
     Callback = function()
-        OutputText = ""
-        local count = ScanFolders()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " folders!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanFolders()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " folders",
+                Time = 3
+            })
+        end)
     end
 })
 
-ScanTab:AddButton({
-    Name = "📊 Scan Values",
+MainTab:AddButton({
+    Name = "📊 Your Values",
     Callback = function()
-        OutputText = ""
-        local count = ScanValues()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " values!",
-            Time = 3
-        })
-    end
-})
-
-ScanTab:AddButton({
-    Name = "👥 Scan Players",
-    Callback = function()
-        OutputText = ""
-        local count = ScanPlayers()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " players!",
-            Time = 3
-        })
-    end
-})
-
-ScanTab:AddButton({
-    Name = "🏷️ Scan Attributes",
-    Callback = function()
-        OutputText = ""
-        local count = ScanAttributes()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " attributes!",
-            Time = 3
-        })
+        task.spawn(function()
+            OutputText = ""
+            local c = ScanValues()
+            OrionLib:MakeNotification({
+                Name = "✅ Done",
+                Content = "Found " .. c .. " values",
+                Time = 3
+            })
+        end)
     end
 })
 
 -- ============================================
--- TAB 2: FULL SCAN & SAVE
+-- TAB 2: FULL SCAN
 -- ============================================
 local FullTab = Window:MakeTab({
     Name = "Full Scan",
@@ -676,25 +727,25 @@ local FullTab = Window:MakeTab({
 })
 
 FullTab:AddSection({
-    Name = "Full Game Scan"
+    Name = "⚠️ Full Scan (Slower)"
 })
 
-FullTab:AddParagraph("Info", "Full scan will scan EVERYTHING in the game and show results in console (F9).")
+FullTab:AddParagraph("Warning", "Full scan takes longer but won't freeze anymore!")
 
 FullTab:AddButton({
     Name = "🔄 RUN FULL SCAN",
     Callback = function()
         OrionLib:MakeNotification({
             Name = "⏳ Scanning...",
-            Content = "Please wait...",
-            Time = 3
+            Content = "This may take 10-20 seconds",
+            Time = 5
         })
         
         task.spawn(function()
             FullScan()
             OrionLib:MakeNotification({
                 Name = "✅ Complete!",
-                Content = "Check console (F9) for results",
+                Content = "Check console (F9)",
                 Time = 5
             })
         end)
@@ -702,26 +753,18 @@ FullTab:AddButton({
 })
 
 FullTab:AddSection({
-    Name = "Save Results"
+    Name = "💾 Save Results"
 })
 
 FullTab:AddButton({
-    Name = "💾 Save to Text File",
+    Name = "💾 Save to File",
     Callback = function()
         local success, result = SaveToFile()
-        if success then
-            OrionLib:MakeNotification({
-                Name = "✅ Saved!",
-                Content = "File: " .. result,
-                Time = 5
-            })
-        else
-            OrionLib:MakeNotification({
-                Name = "❌ Error",
-                Content = result,
-                Time = 5
-            })
-        end
+        OrionLib:MakeNotification({
+            Name = success and "✅ Saved!" or "❌ Error",
+            Content = result,
+            Time = 5
+        })
     end
 })
 
@@ -729,19 +772,11 @@ FullTab:AddButton({
     Name = "📋 Copy to Clipboard",
     Callback = function()
         local success, result = CopyToClipboard()
-        if success then
-            OrionLib:MakeNotification({
-                Name = "✅ Copied!",
-                Content = "Paste anywhere to view results",
-                Time = 5
-            })
-        else
-            OrionLib:MakeNotification({
-                Name = "❌ Error",
-                Content = result,
-                Time = 5
-            })
-        end
+        OrionLib:MakeNotification({
+            Name = success and "✅ Copied!" or "❌ Error",
+            Content = result,
+            Time = 5
+        })
     end
 })
 
@@ -749,55 +784,11 @@ FullTab:AddButton({
     Name = "📖 Open Console (F9)",
     Callback = function()
         game:GetService("StarterGui"):SetCore("DevConsoleVisible", true)
-        OrionLib:MakeNotification({
-            Name = "✅ Opened",
-            Content = "Console is now visible",
-            Time = 3
-        })
     end
 })
 
 -- ============================================
--- TAB 3: STRUCTURE
--- ============================================
-local StructureTab = Window:MakeTab({
-    Name = "Structure",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-StructureTab:AddSection({
-    Name = "Game Structure"
-})
-
-StructureTab:AddButton({
-    Name = "🌍 Workspace Structure",
-    Callback = function()
-        OutputText = ""
-        local count = ScanWorkspaceStructure()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " top-level objects!",
-            Time = 3
-        })
-    end
-})
-
-StructureTab:AddButton({
-    Name = "📦 ReplicatedStorage Structure",
-    Callback = function()
-        OutputText = ""
-        local count = ScanReplicatedStructure()
-        OrionLib:MakeNotification({
-            Name = "✅ Done",
-            Content = "Found " .. count .. " objects!",
-            Time = 3
-        })
-    end
-})
-
--- ============================================
--- TAB 4: SETTINGS
+-- TAB 3: SETTINGS
 -- ============================================
 local SettingsTab = Window:MakeTab({
     Name = "Settings",
@@ -806,27 +797,37 @@ local SettingsTab = Window:MakeTab({
 })
 
 SettingsTab:AddSection({
-    Name = "How to Use"
+    Name = "Scan Settings"
 })
 
-SettingsTab:AddParagraph("Step 1", "Click any scan button to scan that category")
+SettingsTab:AddSlider({
+    Name = "Max Objects to Scan",
+    Min = 100,
+    Max = 1000,
+    Default = 500,
+    Increment = 100,
+    Callback = function(val)
+        Settings.MaxObjects = val
+    end
+})
 
-SettingsTab:AddParagraph("Step 2", "Open console (F9) to see detailed results")
-
-SettingsTab:AddParagraph("Step 3", "Use FULL SCAN to scan everything at once")
-
-SettingsTab:AddParagraph("Step 4", "Save to file or copy to clipboard to share")
+SettingsTab:AddSlider({
+    Name = "Yield Every X Objects",
+    Min = 10,
+    Max = 100,
+    Default = 50,
+    Increment = 10,
+    Callback = function(val)
+        Settings.YieldEvery = val
+    end
+})
 
 SettingsTab:AddSection({
-    Name = "About"
+    Name = "UI"
 })
 
-SettingsTab:AddParagraph("Version", "Game Explorer v4.0 - OrionLib Edition")
-
-SettingsTab:AddParagraph("File Location", "Saved files go to your executor's workspace folder")
-
 SettingsTab:AddButton({
-    Name = "🗑️ Destroy UI",
+    Name = "🗑️ Close UI",
     Callback = function()
         OrionLib:Destroy()
         getgenv().__EXPLORER = nil
@@ -839,21 +840,17 @@ SettingsTab:AddButton({
 OrionLib:Init()
 
 print("")
-print("╔═══════════════════════════════════════════════╗")
-print("║      GAME EXPLORER LOADED!                    ║")
-print("╠═══════════════════════════════════════════════╣")
-print("║  OrionLib UI Version                          ║")
-print("║                                               ║")
-print("║  HOW TO USE:                                  ║")
-print("║  1. Click any scan button                     ║")
-print("║  2. Check F9 console for results              ║")
-print("║  3. Use FULL SCAN for everything              ║")
-print("║  4. Save or copy results to share             ║")
-print("╚═══════════════════════════════════════════════╝")
+print("╔════════════════════════════════════════╗")
+print("║  ✅ GAME EXPLORER LOADED!              ║")
+print("╠════════════════════════════════════════╣")
+print("║  Use QUICK SCAN for fast results       ║")
+print("║  Use FULL SCAN for everything          ║")
+print("║  NO MORE FREEZING!                     ║")
+print("╚════════════════════════════════════════╝")
 print("")
 
 OrionLib:MakeNotification({
-    Name = "✅ Game Explorer Loaded!",
-    Content = "Ready to scan! Use the tabs.",
+    Name = "✅ Loaded!",
+    Content = "Use Quick Scan for best performance",
     Time = 5
 })
